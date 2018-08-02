@@ -1,0 +1,6 @@
+[package]
+name = "dom_test"
+version = "0.1.0"
+authors = ["Adrian Danis <rambobones@gmail.com>"]
+
+[dependencies]

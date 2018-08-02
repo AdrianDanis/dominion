@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "dom_core",
+    "dom_test",
+]
