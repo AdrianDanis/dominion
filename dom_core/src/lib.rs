@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy)]
 enum Player {
     P0,
     P1,
@@ -6,19 +7,21 @@ enum Player {
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Players {
     Two = 2,
     Three = 3,
     Four = 4,
 }
 
+#[derive(Debug, Clone, Copy)]
 struct PlayerSet {
 }
 
 /// Cards are revealed from the hand of a player and are shown to a single player
 /// or all players. Having an 'all' option instead of requiring multiple reveals
 /// provides an indication of whether a reveal was public or directed
+#[derive(Debug, Clone, Copy)]
 enum Reveal {
     All,
     None,
@@ -52,8 +55,23 @@ enum Card {
 }
 
 impl Card {
+    fn player_victories(players: Players) -> u32 {
+        if players == Players::Two {
+            8
+        } else {
+            12
+        }
+    }
     fn starting_count(&self, players: Players) -> u32 {
-        unimplemented!()
+        match *self {
+            Card::Copper => 60,
+            Card::Silver => 40,
+            Card::Gold => 30,
+            Card::Estate => players as u32 * 3 + Self::player_victories(players),
+            Card::Duchy | Card::Province => Self::player_victories(players),
+            Card::Curse => (players as u32 - 1) * 10,
+            _ => 10,
+        }
     }
 }
 
@@ -62,7 +80,15 @@ impl Card {
 /// Provides a way to store sets of cards that have no ordering. The lack of ordering
 /// is so that no information can be informed by the order cards are iterated from the
 /// set.
+#[derive(Debug, Clone, Copy)]
 struct CardSet {
+    
+}
+
+impl CardSet {
+    fn empty() -> CardSet {
+        CardSet {}
+    }
 }
 
 /// Defines a change to the board state
@@ -78,6 +104,7 @@ struct CardSet {
 /// get the hidden information. Replaying up until the current state does not need the seed
 /// as state that may be hidden has an explicit reveal `Mutation` before being used.
 /// Reveals can be directed to a subset of players to describe partial information.
+#[derive(Debug, Clone, Copy)]
 enum Mutation {
     /// Add players to the game
     ///
@@ -116,11 +143,20 @@ type Mutations = Vec<Mutation>;
 ///
 /// This structure is immutable and any mutations must be done through an explicit `Mutation`.
 struct BoardState {
+    supply: CardSet,
+    trash: Vec<Card>,
+    stacks: CardSet,
+    players: Players,
 }
 
 impl BoardState {
     fn new() -> Self {
-        unimplemented!()
+        BoardState {
+            supply: CardSet::empty(),
+            trash: Vec::new(),
+            stacks: CardSet::empty(),
+            players: Players::Two,
+        }
     }
     fn mutate(self, m: Mutation) -> Option<BoardState> {
         unimplemented!()
@@ -135,8 +171,12 @@ impl BoardState {
     /// Perform multiple mutations
     ///
     /// Only returns a board state if *all* mutations apply successfully
-    fn mutate_multi(self, m: &Mutations) -> Option<BoardState> {
-        unimplemented!()
+    fn mutate_multi(self, mutations: &Mutations) -> Option<BoardState> {
+        let mut state = Some(self);
+        for m in mutations {
+            state = state.and_then(|s| s.mutate(*m));
+        }
+        state
     }
 }
 
@@ -178,6 +218,22 @@ impl Game {
         let init_muts = vec![
             Mutation::SetPlayers(rules.players),
             Self::start_stack(Card::Copper, rules.players),
+            Self::start_stack(Card::Silver, rules.players),
+            Self::start_stack(Card::Gold, rules.players),
+            Self::start_stack(Card::Estate, rules.players),
+            Self::start_stack(Card::Duchy, rules.players),
+            Self::start_stack(Card::Province, rules.players),
+            Self::start_stack(Card::Curse, rules.players),
+            Self::start_stack(rules.set[0], rules.players),
+            Self::start_stack(rules.set[1], rules.players),
+            Self::start_stack(rules.set[2], rules.players),
+            Self::start_stack(rules.set[3], rules.players),
+            Self::start_stack(rules.set[4], rules.players),
+            Self::start_stack(rules.set[5], rules.players),
+            Self::start_stack(rules.set[6], rules.players),
+            Self::start_stack(rules.set[7], rules.players),
+            Self::start_stack(rules.set[8], rules.players),
+            Self::start_stack(rules.set[9], rules.players),
         ];
         (
             Game {
