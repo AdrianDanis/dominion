@@ -1,13 +1,19 @@
-#[derive(Debug, Clone, Copy)]
+#[macro_use]
+extern crate enum_map;
+
+use enum_map::{Enum, EnumMap};
+
+#[derive(Debug, Clone, Copy, Enum)]
+#[repr(u32)]
 enum Player {
-    P0,
-    P1,
-    P2,
-    P3,
+    P0 = 0,
+    P1 = 1,
+    P2 = 2,
+    P3 = 3,
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 enum Players {
     Two = 2,
     Three = 3,
@@ -29,7 +35,8 @@ enum Reveal {
 }
 
 /// Enumeration of all different cards
-#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Enum)]
 enum Card {
     // Teasure
     Copper,
@@ -82,12 +89,32 @@ impl Card {
 /// set.
 #[derive(Debug, Clone, Copy)]
 struct CardSet {
-    
+    map: EnumMap<Card, u32>,
 }
 
 impl CardSet {
     fn empty() -> CardSet {
-        CardSet {}
+        CardSet {
+            map: EnumMap::new(),
+        }
+    }
+    fn insert(&mut self, card: Card, count: u32) {
+        self.map[card] += count;
+    }
+    fn take(&mut self, card: Card, count: u32) -> bool {
+        if self.map[card] < count {
+            false
+        } else {
+            self.map[card] -= count;
+            true
+        }
+    }
+    fn count(&self, card: Card) -> u32 {
+        self.map[card]
+    }
+    /// Check if there are non zero copies of a card in the set
+    fn contains(&self, card: Card) -> bool {
+        self.count(card) > 0
     }
 }
 
@@ -134,6 +161,12 @@ enum Mutation {
     RevealTopDeck(Player, Option<Card>, Reveal),
     /// Move a card from hand to play area
     PlayCard(Player, Card, Reveal),
+    /// Gain a card from supply to discard
+    GainCard(Player, Card),
+    /// Shuffle discard and make it the deck
+    ///
+    /// This implies that there is no current deck
+    ShuffleDiscard(Player),
 }
 
 /// Convenience alias for grouping ordered mutations
@@ -147,6 +180,7 @@ struct BoardState {
     trash: Vec<Card>,
     stacks: CardSet,
     players: Players,
+    hands: Vec<CardSet>,
 }
 
 impl BoardState {
@@ -156,17 +190,62 @@ impl BoardState {
             trash: Vec::new(),
             stacks: CardSet::empty(),
             players: Players::Two,
+            hands: Vec::new(),
+        }
+    }
+    fn set_players(self, p: Players) -> Option<BoardState> {
+        if self.hands.len() != 0 {
+            None
+        } else {
+            let mut b = self;
+            b.players = p;
+            for _ in 0..(p as u32) {
+                b.hands.push(CardSet::empty());
+            }
+            Some(b)
+        }
+    }
+    fn add_stack(self, card: Card, count: u32) -> Option<BoardState> {
+        if self.stacks.contains(card) {
+            None
+        } else {
+            let mut b = self;
+            b.stacks.insert(card, 1);
+            b.supply.insert(card, count);
+            Some(b)
+        }
+    }
+    fn gain_card(self, player: Player, card: Card) -> Option<BoardState> {
+        let mut b = self;
+        if b.supply.take(card, 1) {
+            if let Some(hand) = b.hands.get_mut(player as usize) {
+                hand.insert(card, 1);
+            } else {
+                return None;
+            }
+            Some(b)
+        } else {
+            None
         }
     }
     fn mutate(self, m: Mutation) -> Option<BoardState> {
-        unimplemented!()
+        match m {
+            Mutation::SetPlayers(p) => self.set_players(p),
+            Mutation::AddStack(card, count) => self.add_stack(card, count),
+            Mutation::GainCard(p, c) => self.gain_card(p, c),
+            _ => unimplemented!()
+        }
     }
     /// Counts how many of a certain card are presently in the supply
     ///
     /// Returns `None`if the requested card was never in the supply. This is to distinguish
     /// a card that was never in the game, `None`, versus an empty pile `Some(0)`
     fn count_supply(&self, card: Card) -> Option<u32> {
-        unimplemented!()
+        if self.stacks.contains(card) {
+            Some(self.supply.count(card))
+        } else {
+            None
+        }
     }
     /// Perform multiple mutations
     ///
@@ -215,7 +294,7 @@ impl Game {
     }
     /// Create new game with given rules
     fn new(rules: Rules) -> (Game, Mutations) {
-        let init_muts = vec![
+        let mut init_muts = vec![
             Mutation::SetPlayers(rules.players),
             Self::start_stack(Card::Copper, rules.players),
             Self::start_stack(Card::Silver, rules.players),
@@ -235,6 +314,15 @@ impl Game {
             Self::start_stack(rules.set[8], rules.players),
             Self::start_stack(rules.set[9], rules.players),
         ];
+        for p in 0..(rules.players as u32) {
+            let player = Enum::<u32>::from_usize(p as usize);
+            for _ in 0..3 {
+                init_muts.push(Mutation::GainCard(player, Card::Estate));
+            }
+            for _ in 0..7 {
+                init_muts.push(Mutation::GainCard(player, Card::Copper));
+            }
+        }
         (
             Game {
                 state: BoardState::new().mutate_multi(&init_muts).unwrap(),
