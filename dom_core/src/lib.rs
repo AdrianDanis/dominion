@@ -5,7 +5,7 @@ use enum_map::{Enum, EnumMap};
 
 #[derive(Debug, Clone, Copy, Enum)]
 #[repr(u32)]
-enum Player {
+pub enum Player {
     P0 = 0,
     P1 = 1,
     P2 = 2,
@@ -14,21 +14,21 @@ enum Player {
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-enum Players {
+pub enum Players {
     Two = 2,
     Three = 3,
     Four = 4,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PlayerSet {
+pub struct PlayerSet {
 }
 
 /// Cards are revealed from the hand of a player and are shown to a single player
 /// or all players. Having an 'all' option instead of requiring multiple reveals
 /// provides an indication of whether a reveal was public or directed
 #[derive(Debug, Clone, Copy)]
-enum Reveal {
+pub enum Reveal {
     All,
     None,
     Players(PlayerSet),
@@ -37,7 +37,7 @@ enum Reveal {
 /// Enumeration of all different cards
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, Enum)]
-enum Card {
+pub enum Card {
     // Teasure
     Copper,
     Silver,
@@ -88,7 +88,7 @@ impl Card {
 /// is so that no information can be informed by the order cards are iterated from the
 /// set.
 #[derive(Debug, Clone, Copy)]
-struct CardSet {
+pub struct CardSet {
     map: EnumMap<Card, u32>,
 }
 
@@ -132,7 +132,7 @@ impl CardSet {
 /// as state that may be hidden has an explicit reveal `Mutation` before being used.
 /// Reveals can be directed to a subset of players to describe partial information.
 #[derive(Debug, Clone, Copy)]
-enum Mutation {
+pub enum Mutation {
     /// Add players to the game
     ///
     /// Players can only be set once and must be set prior to performing any mutations
@@ -172,15 +172,23 @@ enum Mutation {
 /// Convenience alias for grouping ordered mutations
 type Mutations = Vec<Mutation>;
 
+#[derive(Debug, Clone)]
+struct PlayerState {
+    hand: CardSet,
+    played: CardSet,
+    discard: CardSet,
+    draw: Vec<Option<Card>>,
+}
+
 /// Definition of the state of a board
 ///
 /// This structure is immutable and any mutations must be done through an explicit `Mutation`.
-struct BoardState {
+#[derive(Debug, Clone)]
+pub struct BoardState {
     supply: CardSet,
     trash: Vec<Card>,
     stacks: CardSet,
-    players: Players,
-    hands: Vec<CardSet>,
+    players: Vec<PlayerState>,
 }
 
 impl BoardState {
@@ -189,18 +197,23 @@ impl BoardState {
             supply: CardSet::empty(),
             trash: Vec::new(),
             stacks: CardSet::empty(),
-            players: Players::Two,
-            hands: Vec::new(),
+            players: Vec::new(),
         }
     }
     fn set_players(self, p: Players) -> Option<BoardState> {
-        if self.hands.len() != 0 {
+        if self.players.len() != 0 {
             None
         } else {
             let mut b = self;
-            b.players = p;
             for _ in 0..(p as u32) {
-                b.hands.push(CardSet::empty());
+                b.players.push(
+                    PlayerState {
+                        hand: CardSet::empty(),
+                        played: CardSet::empty(),
+                        discard: CardSet::empty(),
+                        draw: Vec::new(),
+                    }
+                );
             }
             Some(b)
         }
@@ -218,8 +231,8 @@ impl BoardState {
     fn gain_card(self, player: Player, card: Card) -> Option<BoardState> {
         let mut b = self;
         if b.supply.take(card, 1) {
-            if let Some(hand) = b.hands.get_mut(player as usize) {
-                hand.insert(card, 1);
+            if let Some(player) = b.players.get_mut(player as usize) {
+                player.discard.insert(card, 1);
             } else {
                 return None;
             }
@@ -257,6 +270,9 @@ impl BoardState {
         }
         state
     }
+    pub fn from_mutations(mutations: &Mutations) -> Option<BoardState> {
+        Self::new().mutate_multi(mutations)
+    }
 }
 
 /// Current state of the game
@@ -284,13 +300,20 @@ struct Rules {
 /// Defines and runs the rules and logic of a dominion game
 ///
 /// Internally has a `BoardState` and performs actions against it.
-struct Game {
+#[derive(Debug, Clone)]
+pub struct Game {
     state: BoardState,
 }
 
 impl Game {
     fn start_stack(c: Card, players: Players) -> Mutation {
         Mutation::AddStack(c, c.starting_count(players))
+    }
+    pub fn from_state(state: BoardState) -> Option<Game> {
+        Some(Game {state: state})
+    }
+    pub fn from_mutations(mutations: &Mutations) -> Option<Game> {
+        BoardState::from_mutations(mutations).and_then(Self::from_state)
     }
     /// Create new game with given rules
     fn new(rules: Rules) -> (Game, Mutations) {
@@ -331,7 +354,7 @@ impl Game {
         )
     }
     /// Initialize 'First Game' layout
-    fn new_first_game(players: Players) -> (Game, Mutations) {
+    pub fn new_first_game(players: Players) -> (Game, Mutations) {
         Self::new( Rules {
             players: players,
             set: [Card::Cellar, Card::Market, Card::Militia, Card::Mine, Card::Moat, Card::Remodel, Card::Smithy, Card::Village, Card::Woodcutter, Card::Workshop],

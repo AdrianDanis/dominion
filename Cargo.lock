@@ -13,6 +13,9 @@ dependencies = [
 [[package]]
 name = "dom_test"
 version = "0.1.0"
+dependencies = [
+ "dom_core 0.1.0",
+]
 
 [[package]]
 name = "enum-map"
