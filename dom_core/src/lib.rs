@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate enum_map;
+extern crate rand;
+
+use rand::SeedableRng;
 
 use enum_map::{Enum, EnumMap};
 
@@ -92,6 +95,24 @@ pub struct CardSet {
     map: EnumMap<Card, u32>,
 }
 
+pub struct CardSetIterator {
+    cards: Vec<(Card, u32)>,
+}
+
+impl Iterator for CardSetIterator {
+    type Item = Card;
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((card, count)) = self.cards.pop() {
+            let ret = card;
+            if count > 1 {
+                self.cards.push((card, count - 1));
+            }
+            return Some(ret);
+        }
+        None
+    }
+}
+
 impl CardSet {
     fn empty() -> CardSet {
         CardSet {
@@ -115,6 +136,26 @@ impl CardSet {
     /// Check if there are non zero copies of a card in the set
     fn contains(&self, card: Card) -> bool {
         self.count(card) > 0
+    }
+    fn drain(&mut self) -> CardSetIterator {
+        let it = self.into_iter();
+        *self = Self::empty();
+        return it;
+    }
+}
+
+impl IntoIterator for CardSet {
+    type Item = Card;
+    type IntoIter = CardSetIterator;
+
+    fn into_iter(self) -> CardSetIterator {
+        let mut cards = Vec::new();
+        for (card, value) in self.map {
+            if value > 0 {
+                cards.push((card, value));
+            }
+        }
+        CardSetIterator { cards: cards }
     }
 }
 
@@ -180,6 +221,11 @@ struct PlayerState {
     draw: Vec<Option<Card>>,
 }
 
+type RNGSource = rand::prng::chacha::ChaChaRng;
+type RNGSeed = [u8; 32];
+
+const DUMMY_SEED: RNGSeed = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+
 /// Definition of the state of a board
 ///
 /// This structure is immutable and any mutations must be done through an explicit `Mutation`.
@@ -189,15 +235,17 @@ pub struct BoardState {
     trash: Vec<Card>,
     stacks: CardSet,
     players: Vec<PlayerState>,
+    rand: Option<RNGSource>,
 }
 
 impl BoardState {
-    fn new() -> Self {
+    fn new(seed: Option<RNGSeed>) -> Self {
         BoardState {
             supply: CardSet::empty(),
             trash: Vec::new(),
             stacks: CardSet::empty(),
             players: Vec::new(),
+            rand: seed.map(RNGSource::from_seed),
         }
     }
     fn set_players(self, p: Players) -> Option<BoardState> {
@@ -241,11 +289,27 @@ impl BoardState {
             None
         }
     }
+    fn shuffle(self, player: Player) -> Option<BoardState> {
+        let mut b = self;
+        if let Some(player) = b.players.get_mut(player as usize) {
+            if player.draw.len() == 0 {
+                player.draw = player.discard.drain().map(|x| Some(x)).collect();
+                // check if we have rng powers to shuffle
+                unimplemented!()
+            } else {
+                return None
+            }
+        } else {
+            return None;
+        }
+        Some(b)
+    }
     fn mutate(self, m: Mutation) -> Option<BoardState> {
         match m {
             Mutation::SetPlayers(p) => self.set_players(p),
             Mutation::AddStack(card, count) => self.add_stack(card, count),
             Mutation::GainCard(p, c) => self.gain_card(p, c),
+            Mutation::ShuffleDiscard(p) => self.shuffle(p),
             _ => unimplemented!()
         }
     }
@@ -271,7 +335,7 @@ impl BoardState {
         state
     }
     pub fn from_mutations(mutations: &Mutations) -> Option<BoardState> {
-        Self::new().mutate_multi(mutations)
+        Self::new(None).mutate_multi(mutations)
     }
 }
 
@@ -345,6 +409,7 @@ impl Game {
             for _ in 0..7 {
                 init_muts.push(Mutation::GainCard(player, Card::Copper));
             }
+            init_muts.push(Mutation::ShuffleDiscard(player));
         }
         (
             Game {

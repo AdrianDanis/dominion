@@ -5,3 +5,4 @@ authors = ["Adrian Danis <rambobones@gmail.com>"]
 
 [dependencies]
 enum-map = "0.4.1"
+rand = "0.5.5"
