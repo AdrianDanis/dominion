@@ -143,6 +143,9 @@ impl CardSet {
         *self = Self::empty();
         return it;
     }
+    fn count_iter(&self) -> enum_map::Iter<Card, u32> {
+        self.map.iter()
+    }
 }
 
 impl IntoIterator for CardSet {
@@ -272,6 +275,9 @@ impl BoardState {
             players: Vec::new(),
             rand: seed.map(RNGSource::from_seed),
         }
+    }
+    pub fn supply_stacks(&self) -> impl Iterator<Item = (Card, &u32)> {
+        self.supply.count_iter().filter(move |(key, _)| self.stacks.contains(*key))
     }
     fn set_players(self, p: Players) -> Option<BoardState> {
         if self.players.len() != 0 {
@@ -463,7 +469,7 @@ impl Game {
     fn state(&self) -> State {
         unimplemented!()
     }
-    fn board_state(&self) -> &BoardState {
+    pub fn board_state(&self) -> &BoardState {
         &self.state
     }
     /// Perform an action against the game
