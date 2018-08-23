@@ -3,6 +3,7 @@ extern crate enum_map;
 extern crate rand;
 
 use rand::SeedableRng;
+use rand::Rng;
 
 use enum_map::{Enum, EnumMap};
 
@@ -39,7 +40,7 @@ pub enum Reveal {
 
 /// Enumeration of all different cards
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, Enum)]
+#[derive(Debug, Clone, Copy, Enum, Eq, PartialEq)]
 pub enum Card {
     // Teasure
     Copper,
@@ -159,6 +160,12 @@ impl IntoIterator for CardSet {
     }
 }
 
+impl PartialEq for CardSet {
+    fn eq(&self, other: &CardSet) -> bool {
+        self.into_iter().eq(other.into_iter())
+    }
+}
+
 /// Defines a change to the board state
 ///
 /// Mutations are meant to be the smallest indivisible operations that occur on the
@@ -221,6 +228,15 @@ struct PlayerState {
     draw: Vec<Option<Card>>,
 }
 
+impl PartialEq for PlayerState {
+    fn eq(&self, other: &PlayerState) -> bool {
+        self.hand == other.hand
+            && self.played == other.played
+            && self.discard == other.discard
+            && self.draw.iter().eq(other.draw.iter())
+    }
+}
+
 type RNGSource = rand::prng::chacha::ChaChaRng;
 type RNGSeed = [u8; 32];
 
@@ -236,6 +252,15 @@ pub struct BoardState {
     stacks: CardSet,
     players: Vec<PlayerState>,
     rand: Option<RNGSource>,
+}
+
+impl PartialEq for BoardState {
+    fn eq(&self, other: &BoardState) -> bool {
+        self.supply == other.supply
+            && self.stacks == other.stacks
+            && self.trash.iter().eq(other.trash.iter())
+            && self.players.iter().eq(other.players.iter())
+    }
 }
 
 impl BoardState {
@@ -293,9 +318,14 @@ impl BoardState {
         let mut b = self;
         if let Some(player) = b.players.get_mut(player as usize) {
             if player.draw.len() == 0 {
-                player.draw = player.discard.drain().map(|x| Some(x)).collect();
+                let discard = player.discard.drain();
                 // check if we have rng powers to shuffle
-                unimplemented!()
+                if let Some(mut rng) = b.rand.as_mut() {
+                    player.draw = discard.map(|x| Some(x)).collect();
+                    rng.shuffle(player.draw.as_mut_slice());
+                } else {
+                    player.draw = discard.map(|_| None).collect();
+                }
             } else {
                 return None
             }
@@ -369,6 +399,8 @@ pub struct Game {
     state: BoardState,
 }
 
+const FIRST_SET: [Card; 10] = [Card::Cellar, Card::Market, Card::Militia, Card::Mine, Card::Moat, Card::Remodel, Card::Smithy, Card::Village, Card::Woodcutter, Card::Workshop];
+
 impl Game {
     fn start_stack(c: Card, players: Players) -> Mutation {
         Mutation::AddStack(c, c.starting_count(players))
@@ -380,7 +412,7 @@ impl Game {
         BoardState::from_mutations(mutations).and_then(Self::from_state)
     }
     /// Create new game with given rules
-    fn new(rules: Rules) -> (Game, Mutations) {
+    fn new_from_seed(rules: Rules, seed: RNGSeed) -> (Game, Mutations) {
         let mut init_muts = vec![
             Mutation::SetPlayers(rules.players),
             Self::start_stack(Card::Copper, rules.players),
@@ -413,16 +445,19 @@ impl Game {
         }
         (
             Game {
-                state: BoardState::new().mutate_multi(&init_muts).unwrap(),
+                state: BoardState::new(Some(seed)).mutate_multi(&init_muts).unwrap(),
             },
             init_muts
         )
+    }
+    fn new(rules: Rules) -> (Game, Mutations) {
+        Self::new_from_seed(rules, DUMMY_SEED)
     }
     /// Initialize 'First Game' layout
     pub fn new_first_game(players: Players) -> (Game, Mutations) {
         Self::new( Rules {
             players: players,
-            set: [Card::Cellar, Card::Market, Card::Militia, Card::Mine, Card::Moat, Card::Remodel, Card::Smithy, Card::Village, Card::Woodcutter, Card::Workshop],
+            set: FIRST_SET,
         })
     }
     fn state(&self) -> State {
@@ -460,5 +495,23 @@ mod tests {
         assert_eq!(g.board_state().count_supply(Card::Estate), Some(12));
         assert_eq!(g.board_state().count_supply(Card::Duchy), Some(12));
         assert_eq!(g.board_state().count_supply(Card::Province), Some(12));
+    }
+    #[test]
+    fn rng_seeds_stable() {
+        let (g, _) = Game::new_from_seed(
+            Rules {
+                players: Players::Two,
+                set: FIRST_SET,
+            },
+            DUMMY_SEED
+        );
+        let (g2, _) = Game::new_from_seed(
+            Rules {
+                players: Players::Two,
+                set: FIRST_SET,
+            },
+            DUMMY_SEED
+        );
+        assert_eq!(g.board_state(), g2.board_state());
     }
 }
