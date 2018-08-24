@@ -1,9 +1,31 @@
 extern crate dom_core;
 
+use std::fmt;
+use dom_core::card;
+
+struct SupplyCard {
+    card: dom_core::Card,
+    quantity: u32,
+}
+
+impl<'a> From<(dom_core::Card, &'a u32)> for SupplyCard {
+    fn from(sup: (dom_core::Card, &'a u32)) -> SupplyCard {
+        SupplyCard { card: sup.0, quantity: *sup.1}
+    }
+}
+
+impl fmt::Display for SupplyCard {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}: {}", self.card, if self.quantity == 0 { format!("DEPLETED")} else { format!("{}", self.quantity)})
+    }
+}
+
+//fn print_supply_cards(
+
 fn print_board_state(state: &dom_core::BoardState) {
     println!("Supply:");
-    for (key, value) in state.supply_stacks().filter(|(key, value)| [dom_core::Card::Copper, dom_core::Card::Silver, dom_core::Card::Gold].contains(key)) {
-        println!("\t{:?}: {}", key, if *value == 0 {format!("DEPLETED")} else {format!("{}", value)});
+    for kv in state.supply_stacks().filter(|(key, value)| card::lists::BASE_TREASURE.contains(key)) {
+        println!("\t{}", SupplyCard::from(kv));
     }
 }
 

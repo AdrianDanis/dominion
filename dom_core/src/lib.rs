@@ -2,10 +2,16 @@
 extern crate enum_map;
 extern crate rand;
 
+pub mod card;
+mod rules;
+
+pub use card::{Card, CardSet};
+pub use rules::{Players, Rules};
+
 use rand::SeedableRng;
 use rand::Rng;
 
-use enum_map::{Enum, EnumMap};
+use enum_map::{Enum};
 
 #[derive(Debug, Clone, Copy, Enum)]
 #[repr(u32)]
@@ -14,14 +20,6 @@ pub enum Player {
     P1 = 1,
     P2 = 2,
     P3 = 3,
-}
-
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum Players {
-    Two = 2,
-    Three = 3,
-    Four = 4,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,137 +34,6 @@ pub enum Reveal {
     All,
     None,
     Players(PlayerSet),
-}
-
-/// Enumeration of all different cards
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, Enum, Eq, PartialEq)]
-pub enum Card {
-    // Teasure
-    Copper,
-    Silver,
-    Gold,
-    // Victory
-    Estate,
-    Duchy,
-    Province,
-    // Curse
-    Curse,
-    // Action
-    Cellar,
-    Market,
-    Militia,
-    Mine,
-    Moat,
-    Remodel,
-    Smithy,
-    Village,
-    Woodcutter,
-    Workshop,
-}
-
-impl Card {
-    fn player_victories(players: Players) -> u32 {
-        if players == Players::Two {
-            8
-        } else {
-            12
-        }
-    }
-    fn starting_count(&self, players: Players) -> u32 {
-        match *self {
-            Card::Copper => 60,
-            Card::Silver => 40,
-            Card::Gold => 30,
-            Card::Estate => players as u32 * 3 + Self::player_victories(players),
-            Card::Duchy | Card::Province => Self::player_victories(players),
-            Card::Curse => (players as u32 - 1) * 10,
-            _ => 10,
-        }
-    }
-}
-
-/// Optimized datastructure for storing strictly unordered sets of cards
-///
-/// Provides a way to store sets of cards that have no ordering. The lack of ordering
-/// is so that no information can be informed by the order cards are iterated from the
-/// set.
-#[derive(Debug, Clone, Copy)]
-pub struct CardSet {
-    map: EnumMap<Card, u32>,
-}
-
-pub struct CardSetIterator {
-    cards: Vec<(Card, u32)>,
-}
-
-impl Iterator for CardSetIterator {
-    type Item = Card;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((card, count)) = self.cards.pop() {
-            let ret = card;
-            if count > 1 {
-                self.cards.push((card, count - 1));
-            }
-            return Some(ret);
-        }
-        None
-    }
-}
-
-impl CardSet {
-    fn empty() -> CardSet {
-        CardSet {
-            map: EnumMap::new(),
-        }
-    }
-    fn insert(&mut self, card: Card, count: u32) {
-        self.map[card] += count;
-    }
-    fn take(&mut self, card: Card, count: u32) -> bool {
-        if self.map[card] < count {
-            false
-        } else {
-            self.map[card] -= count;
-            true
-        }
-    }
-    fn count(&self, card: Card) -> u32 {
-        self.map[card]
-    }
-    /// Check if there are non zero copies of a card in the set
-    fn contains(&self, card: Card) -> bool {
-        self.count(card) > 0
-    }
-    fn drain(&mut self) -> CardSetIterator {
-        let it = self.into_iter();
-        *self = Self::empty();
-        return it;
-    }
-    fn count_iter(&self) -> enum_map::Iter<Card, u32> {
-        self.map.iter()
-    }
-}
-
-impl IntoIterator for CardSet {
-    type Item = Card;
-    type IntoIter = CardSetIterator;
-
-    fn into_iter(self) -> CardSetIterator {
-        let mut cards = Vec::new();
-        for (card, value) in self.map {
-            if value > 0 {
-                cards.push((card, value));
-            }
-        }
-        CardSetIterator { cards: cards }
-    }
-}
-
-impl PartialEq for CardSet {
-    fn eq(&self, other: &CardSet) -> bool {
-        self.into_iter().eq(other.into_iter())
-    }
 }
 
 /// Defines a change to the board state
@@ -392,11 +259,6 @@ enum Action {
     EndAction
 }
 
-struct Rules {
-    players: Players,
-    set: [Card; 10],
-}
-
 /// Defines and runs the rules and logic of a dominion game
 ///
 /// Internally has a `BoardState` and performs actions against it.
@@ -404,8 +266,6 @@ struct Rules {
 pub struct Game {
     state: BoardState,
 }
-
-const FIRST_SET: [Card; 10] = [Card::Cellar, Card::Market, Card::Militia, Card::Mine, Card::Moat, Card::Remodel, Card::Smithy, Card::Village, Card::Woodcutter, Card::Workshop];
 
 impl Game {
     fn start_stack(c: Card, players: Players) -> Mutation {
@@ -463,7 +323,7 @@ impl Game {
     pub fn new_first_game(players: Players) -> (Game, Mutations) {
         Self::new( Rules {
             players: players,
-            set: FIRST_SET,
+            set: card::lists::FIRST_SET,
         })
     }
     fn state(&self) -> State {
