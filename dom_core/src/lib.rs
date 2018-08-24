@@ -91,11 +91,26 @@ pub enum Mutation {
 type Mutations = Vec<Mutation>;
 
 #[derive(Debug, Clone)]
-struct PlayerState {
+pub struct PlayerState {
     hand: CardSet,
     played: CardSet,
     discard: CardSet,
     draw: Vec<Option<Card>>,
+}
+
+impl PlayerState {
+    pub fn hand_iter(&self) -> impl Iterator<Item = Card> {
+        self.hand.into_iter()
+    }
+    pub fn played_iter(&self) -> impl Iterator<Item = Card> {
+        self.played.into_iter()
+    }
+    pub fn discard_iter(&self) -> impl Iterator<Item = Card> {
+        self.discard.into_iter()
+    }
+    pub fn draw_iter(&self) -> impl Iterator<Item = Option<Card>> {
+        self.draw.clone().into_iter()
+    }
 }
 
 impl PartialEq for PlayerState {
@@ -122,6 +137,7 @@ pub struct BoardState {
     stacks: CardSet,
     players: Vec<PlayerState>,
     rand: Option<RNGSource>,
+    turn: Player,
 }
 
 impl PartialEq for BoardState {
@@ -141,10 +157,17 @@ impl BoardState {
             stacks: CardSet::empty(),
             players: Vec::new(),
             rand: seed.map(RNGSource::from_seed),
+            turn: Player::P0,
         }
     }
     pub fn supply_stacks(&self) -> impl Iterator<Item = (Card, &u32)> {
         self.supply.count_iter().filter(move |(key, _)| self.stacks.contains(*key))
+    }
+    pub fn active_player(&self) -> Player {
+        self.turn
+    }
+    pub fn get_player(&self, p: Player) -> Option<&PlayerState> {
+        self.players.get(p as u32 as usize)
     }
     fn set_players(self, p: Players) -> Option<BoardState> {
         if self.players.len() != 0 {

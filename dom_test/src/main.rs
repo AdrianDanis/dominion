@@ -41,6 +41,57 @@ fn print_board_state(state: &dom_core::BoardState) {
     print_supply_cards(state, &v);
     println!("Trash:");
     println!("\tNOT DISPLAYED");
+    println!("It is player {}'s turn", (state.active_player() as u32) + 1);
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PlayerDeckRange {
+    Known(dom_core::Card),
+    Unknown(u32),
+}
+
+impl fmt::Display for PlayerDeckRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PlayerDeckRange::Known(card) => write!(f, "{}", format!("{:?}", card)),
+            PlayerDeckRange::Unknown(count) => write!(f, "{} unknown", format!("{}", count)),
+        }
+    }
+}
+fn show_player(player: &dom_core::PlayerState) {
+    let hand_vec: Vec<dom_core::Card> = player.hand_iter().collect();
+    println!("Hand: {:?}", hand_vec);
+    let played_vec: Vec<dom_core::Card> = player.played_iter().collect();
+    println!("Played: {:?}", played_vec);
+    println!("Deck: [{}]",
+        player.draw_iter()
+            // first build a vector where unknown cards are compressed together
+            .fold(Vec::new(), |acc_old, x|
+                {
+                    let mut acc = acc_old;
+                    if let Some(card) = x {
+                        acc.push(PlayerDeckRange::Known(card))
+                    } else {
+                        match acc.pop() {
+                            Some(old@PlayerDeckRange::Known(_)) => {
+                                acc.push(old);
+                                acc.push(PlayerDeckRange::Unknown(1))
+                            },
+                            Some(PlayerDeckRange::Unknown(count)) =>
+                                acc.push(PlayerDeckRange::Unknown(count + 1)),
+                            None =>
+                                acc.push(PlayerDeckRange::Unknown(1)),
+                        }
+                    }
+                    acc
+                }
+            ).iter()
+            // Now render each range into a string
+            .map(|x| format!("{}", x))
+            // Now turn into a single joined string
+            .collect::<Vec<String>>().join(", ")
+    );
+    println!("Discard: NOT DISPLAYED");
 }
 
 fn main() {
@@ -49,4 +100,11 @@ fn main() {
     let mut game_p1 = dom_core::Game::from_mutations(&mutations).unwrap();
 //    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
     print_board_state(game.board_state());
+    let perspective = match game.board_state().active_player() {
+        dom_core::Player::P0 => &game_p0,
+        dom_core::Player::P1 => &game_p1,
+        _ => panic!("Game should only have two players"),
+    };
+    println!("");
+    show_player(perspective.board_state().get_player(game.board_state().active_player()).unwrap());
 }
