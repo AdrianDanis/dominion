@@ -20,13 +20,27 @@ impl fmt::Display for SupplyCard {
     }
 }
 
-//fn print_supply_cards(
+fn print_supply_cards(state: &dom_core::BoardState, cards: &[dom_core::Card]) {
+    for kv in state.supply_stacks().filter(|(key, _)| cards.contains(key)) {
+        println!("\t{}", SupplyCard::from(kv));
+    }
+}
+
+fn is_base_card(card: dom_core::Card) -> bool {
+    card::lists::BASE_TREASURE.contains(&card) ||
+        card::lists::BASE_VICTORY.contains(&card) ||
+        card == dom_core::Card::Curse
+}
 
 fn print_board_state(state: &dom_core::BoardState) {
     println!("Supply:");
-    for kv in state.supply_stacks().filter(|(key, value)| card::lists::BASE_TREASURE.contains(key)) {
-        println!("\t{}", SupplyCard::from(kv));
-    }
+    print_supply_cards(state, &card::lists::BASE_TREASURE);
+    print_supply_cards(state, &card::lists::BASE_VICTORY);
+    print_supply_cards(state, &[dom_core::Card::Curse]);
+    let v: Vec<dom_core::Card> = state.supply_stacks().map(|(key, v)| key).filter(|key| !is_base_card(*key)).collect();
+    print_supply_cards(state, &v);
+    println!("Trash:");
+    println!("\tNOT DISPLAYED");
 }
 
 fn main() {
