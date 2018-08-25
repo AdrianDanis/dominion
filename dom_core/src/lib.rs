@@ -24,6 +24,15 @@ pub enum Player {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlayerSet {
+    bitset: u32,
+}
+
+impl PlayerSet {
+    pub fn just(p: Player) -> PlayerSet{
+        PlayerSet {
+            bitset: 1 << (p as u32),
+        }
+    }
 }
 
 /// Cards are revealed from the hand of a player and are shown to a single player
@@ -77,6 +86,10 @@ pub enum Mutation {
     /// The card is optional to allow for game states that do not have full knowledge to
     /// still talk about a reveal happening.
     RevealTopDeck(Player, Option<Card>, Reveal),
+    /// Draw top card of the deck
+    ///
+    /// Takes the top card of the players deck and puts it in their hand
+    DrawCard(Player),
     /// Move a card from hand to play area
     PlayCard(Player, Card, Reveal),
     /// Gain a card from supply to discard
@@ -92,15 +105,15 @@ type Mutations = Vec<Mutation>;
 
 #[derive(Debug, Clone)]
 pub struct PlayerState {
-    hand: CardSet,
+    hand: Vec<Option<Card>>,
     played: CardSet,
     discard: CardSet,
     draw: Vec<Option<Card>>,
 }
 
 impl PlayerState {
-    pub fn hand_iter(&self) -> impl Iterator<Item = Card> {
-        self.hand.into_iter()
+    pub fn hand_iter(&self) -> impl Iterator<Item = Option<Card>> {
+        self.hand.clone().into_iter()
     }
     pub fn played_iter(&self) -> impl Iterator<Item = Card> {
         self.played.into_iter()
@@ -109,7 +122,7 @@ impl PlayerState {
         self.discard.into_iter()
     }
     pub fn draw_iter(&self) -> impl Iterator<Item = Option<Card>> {
-        self.draw.clone().into_iter()
+        self.draw.clone().into_iter().rev()
     }
 }
 
@@ -177,7 +190,7 @@ impl BoardState {
             for _ in 0..(p as u32) {
                 b.players.push(
                     PlayerState {
-                        hand: CardSet::empty(),
+                        hand: Vec::new(),
                         played: CardSet::empty(),
                         discard: CardSet::empty(),
                         draw: Vec::new(),
@@ -230,12 +243,41 @@ impl BoardState {
         }
         Some(b)
     }
+    fn reveal_top_deck(self, player: Player, card: Option<Card>, reveal: Reveal) -> Option<BoardState> {
+        let mut b = self;
+        if let Some(player) = b.players.get_mut(player as usize) {
+            if let Some(_) = player.draw.pop() {
+                // Should probably check that if we already knew the card we are not changing its information
+                player.draw.push(card);
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        Some(b)
+    }
+    fn draw_card(self, player: Player) -> Option<BoardState> {
+        let mut b = self;
+        if let Some(player) = b.players.get_mut(player as usize) {
+            if let Some(card) = player.draw.pop() {
+                player.hand.push(card);
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        Some(b)
+    }
     fn mutate(self, m: Mutation) -> Option<BoardState> {
         match m {
             Mutation::SetPlayers(p) => self.set_players(p),
             Mutation::AddStack(card, count) => self.add_stack(card, count),
             Mutation::GainCard(p, c) => self.gain_card(p, c),
             Mutation::ShuffleDiscard(p) => self.shuffle(p),
+            Mutation::RevealTopDeck(p, c, r) => self.reveal_top_deck(p, c, r),
+            Mutation::DrawCard(p) => self.draw_card(p),
             _ => unimplemented!()
         }
     }
@@ -300,6 +342,53 @@ impl Game {
     pub fn from_mutations(mutations: &Mutations) -> Option<Game> {
         BoardState::from_mutations(mutations).and_then(Self::from_state)
     }
+    fn chain_mutate(pair: (BoardState, Mutations), mutation: Mutation) -> Option<(BoardState, Mutations)> {
+        let (state, mut mutations) = pair;
+        state.mutate(mutation)
+            .map(|new_state| {mutations.push(mutation); (new_state, mutations)})
+    }
+    fn start_empty_chain_mutate(&self) -> Option<(BoardState, Mutations)> {
+        Some((self.board_state().clone(), Vec::new()))
+    }
+    fn start_chain_mutate(&self, mutation: Mutation) -> Option<(BoardState, Mutations)> {
+        Self::chain_mutate((self.board_state().clone(), Vec::new()), mutation)
+    }
+    fn apply_mutate_chain(&mut self, pair: Option<(BoardState, Mutations)>) -> Option<Mutations> {
+        if let Some((new_state, mutations)) = pair {
+            self.state = new_state;
+            Some(mutations)
+        } else {
+            None
+        }
+    }
+    fn draw_card(&mut self, player: Player) -> Option<Mutations> {
+        let chain =
+            self.start_empty_chain_mutate()
+                // Grab the player and shuffle their discard if we need to
+                .and_then(|state|
+                    state.0.clone().get_player(player)
+                        .and_then(|p|
+                            if p.draw_iter().next() == None && p.discard_iter().next() != None {
+                                Self::chain_mutate(state, Mutation::ShuffleDiscard(player))
+                            } else {
+                                Some(state)
+                            }
+                        )
+                )
+                // Get the player again and reveal + draw if there is a card
+                .and_then(|state|
+                    state.0.clone().get_player(player)
+                        .and_then(|p|
+                            if let Some(card) = p.draw_iter().next() {
+                                Self::chain_mutate(state, Mutation::RevealTopDeck(player, card, Reveal::Players(PlayerSet::just(player))))
+                                    .and_then(|state| Self::chain_mutate(state, Mutation::DrawCard(player)))
+                            } else {
+                                Some(state)
+                            }
+                        )
+                );
+        self.apply_mutate_chain(chain)
+    }
     /// Create new game with given rules
     fn new_from_seed(rules: Rules, seed: RNGSeed) -> (Game, Mutations) {
         let mut init_muts = vec![
@@ -332,12 +421,18 @@ impl Game {
             }
             init_muts.push(Mutation::ShuffleDiscard(player));
         }
-        (
+        let mut game =
             Game {
                 state: BoardState::new(Some(seed)).mutate_multi(&init_muts).unwrap(),
-            },
-            init_muts
-        )
+            };
+        for p in 0..(rules.players as u32) {
+            let player = Enum::<u32>::from_usize(p as usize);
+            for _ in 0..5 {
+                let mut muts = game.draw_card(player).unwrap();
+                init_muts.append(&mut muts);
+            }
+        }
+        (game, init_muts)
     }
     fn new(rules: Rules) -> (Game, Mutations) {
         Self::new_from_seed(rules, DUMMY_SEED)

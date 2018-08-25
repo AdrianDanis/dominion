@@ -102,8 +102,7 @@ impl fmt::Display for MaybeCardList {
 }
 
 fn show_player(player: &dom_core::PlayerState) {
-    let hand_vec: Vec<dom_core::Card> = player.hand_iter().collect();
-    println!("Hand: {:?}", hand_vec);
+    println!("Hand: [{}]", MaybeCardList::from(player.hand_iter()));
     let played_vec: Vec<dom_core::Card> = player.played_iter().collect();
     println!("Played: {:?}", played_vec);
     println!("Deck: [{}]", MaybeCardList::from(player.draw_iter()));
@@ -114,7 +113,7 @@ fn main() {
     let (mut game, mutations) = dom_core::Game::new_first_game(dom_core::Players::Two);
     let mut game_p0 = dom_core::Game::from_mutations(&mutations).unwrap();
     let mut game_p1 = dom_core::Game::from_mutations(&mutations).unwrap();
-//    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
+    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
     print_board_state(game.board_state());
     let perspective = match game.board_state().active_player() {
         dom_core::Player::P0 => &game_p0,
