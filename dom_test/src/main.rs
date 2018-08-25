@@ -109,11 +109,21 @@ fn show_player(player: &dom_core::PlayerState) {
     println!("Discard: NOT DISPLAYED");
 }
 
+fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player) -> dom_core::Mutations {
+    mutations.into_iter().map(|x|
+        match x {
+            dom_core::Mutation::RevealHandCards(p, s, r) => unimplemented!(),
+            dom_core::Mutation::RevealTopDeck(p, c, dom_core::Reveal::Just(ps)) if !ps.contains(player) => dom_core::Mutation::RevealTopDeck(p, None, dom_core::Reveal::Just(ps)),
+            other => other
+        }
+    ).collect()
+}
+
 fn main() {
     let (mut game, mutations) = dom_core::Game::new_first_game(dom_core::Players::Two);
-    let mut game_p0 = dom_core::Game::from_mutations(&mutations).unwrap();
-    let mut game_p1 = dom_core::Game::from_mutations(&mutations).unwrap();
-    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
+    let mut game_p0 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P0)).unwrap();
+    let mut game_p1 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P1)).unwrap();
+//    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
     print_board_state(game.board_state());
     let perspective = match game.board_state().active_player() {
         dom_core::Player::P0 => &game_p0,

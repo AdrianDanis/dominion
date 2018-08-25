@@ -33,6 +33,9 @@ impl PlayerSet {
             bitset: 1 << (p as u32),
         }
     }
+    pub fn contains(&self, p: Player) -> bool {
+        ((self.bitset >> (p as u32)) & 1) == 1
+    }
 }
 
 /// Cards are revealed from the hand of a player and are shown to a single player
@@ -41,8 +44,7 @@ impl PlayerSet {
 #[derive(Debug, Clone, Copy)]
 pub enum Reveal {
     All,
-    None,
-    Players(PlayerSet),
+    Just(PlayerSet),
 }
 
 /// Defines a change to the board state
@@ -91,7 +93,7 @@ pub enum Mutation {
     /// Takes the top card of the players deck and puts it in their hand
     DrawCard(Player),
     /// Move a card from hand to play area
-    PlayCard(Player, Card, Reveal),
+    PlayCard(Player, Card),
     /// Gain a card from supply to discard
     GainCard(Player, Card),
     /// Shuffle discard and make it the deck
@@ -101,7 +103,7 @@ pub enum Mutation {
 }
 
 /// Convenience alias for grouping ordered mutations
-type Mutations = Vec<Mutation>;
+pub type Mutations = Vec<Mutation>;
 
 #[derive(Debug, Clone)]
 pub struct PlayerState {
@@ -380,7 +382,7 @@ impl Game {
                     state.0.clone().get_player(player)
                         .and_then(|p|
                             if let Some(card) = p.draw_iter().next() {
-                                Self::chain_mutate(state, Mutation::RevealTopDeck(player, card, Reveal::Players(PlayerSet::just(player))))
+                                Self::chain_mutate(state, Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))))
                                     .and_then(|state| Self::chain_mutate(state, Mutation::DrawCard(player)))
                             } else {
                                 Some(state)
