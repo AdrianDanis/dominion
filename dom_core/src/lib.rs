@@ -50,7 +50,7 @@ impl<'a> From<&'a mut Game> for Update<'a> {
 }
 
 impl<'a> Update<'a> {
-    pub fn try_append(&mut self, mutation: Mutation) -> bool {
+    fn try_append(&mut self, mutation: Mutation) -> bool {
         if let Some(state) = self.state.clone().mutate(mutation) {
             self.state = state;
             self.updates.push(mutation);
@@ -59,9 +59,17 @@ impl<'a> Update<'a> {
             false
         }
     }
-    pub fn apply(self) -> Mutations {
+    fn apply(self) -> Mutations {
         self.game.state = self.state;
         self.updates
+    }
+    fn try_draw_card(&mut self, player: Player) {
+        // Attempt to shuffle + reveal + draw
+        self.try_append(Mutation::ShuffleDiscard(player));
+        if let Some(card) = self.state.get_player(player).and_then(|p| p.draw_iter().next()) {
+            self.try_append(Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))));
+            self.try_append(Mutation::DrawCard(player));
+        }
     }
 }
 
@@ -83,60 +91,39 @@ impl Game {
     pub fn from_mutations(mutations: &Mutations) -> Option<Game> {
         BoardState::from_mutations(mutations).and_then(Self::from_state)
     }
-    fn try_draw_card(&mut self, player: Player) -> Mutations {
-        // Attempt to shuffle + reveal + draw
-        let mut up = Update::from(self);
-        up.try_append(Mutation::ShuffleDiscard(player));
-        if let Some(card) = up.state.get_player(player).and_then(|p| p.draw_iter().next()) {
-            up.try_append(Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))));
-            up.try_append(Mutation::DrawCard(player));
-        }
-        up.apply()
-    }
     /// Create new game with given rules
     fn new_from_seed(rules: Rules, seed: RNGSeed) -> (Game, Mutations) {
-        let mut init_muts = vec![
-            Mutation::SetPlayers(rules.players),
-            Self::start_stack(Card::Copper, rules.players),
-            Self::start_stack(Card::Silver, rules.players),
-            Self::start_stack(Card::Gold, rules.players),
-            Self::start_stack(Card::Estate, rules.players),
-            Self::start_stack(Card::Duchy, rules.players),
-            Self::start_stack(Card::Province, rules.players),
-            Self::start_stack(Card::Curse, rules.players),
-            Self::start_stack(rules.set[0], rules.players),
-            Self::start_stack(rules.set[1], rules.players),
-            Self::start_stack(rules.set[2], rules.players),
-            Self::start_stack(rules.set[3], rules.players),
-            Self::start_stack(rules.set[4], rules.players),
-            Self::start_stack(rules.set[5], rules.players),
-            Self::start_stack(rules.set[6], rules.players),
-            Self::start_stack(rules.set[7], rules.players),
-            Self::start_stack(rules.set[8], rules.players),
-            Self::start_stack(rules.set[9], rules.players),
-        ];
-        for p in 0..(rules.players as u32) {
-            let player = Enum::<u32>::from_usize(p as usize);
-            for _ in 0..3 {
-                init_muts.push(Mutation::GainCard(player, Card::Estate));
-            }
-            for _ in 0..7 {
-                init_muts.push(Mutation::GainCard(player, Card::Copper));
-            }
-            init_muts.push(Mutation::ShuffleDiscard(player));
-        }
         let mut game =
             Game {
-                state: BoardState::new(Some(seed)).mutate_multi(&init_muts).unwrap(),
+                state: BoardState::new(Some(seed)),
             };
-        for p in 0..(rules.players as u32) {
-            let player = Enum::<u32>::from_usize(p as usize);
-            for _ in 0..5 {
-                let mut muts = game.try_draw_card(player);
-                init_muts.append(&mut muts);
+        let mutations;
+        {
+            let mut up = Update::from(&mut game);
+            up.try_append(Mutation::SetPlayers(rules.players));
+            let stacks = card::lists::BASE_TREASURE.iter()
+                .chain(card::lists::BASE_VICTORY.iter())
+                .chain(rules.set.iter())
+                .chain([Card::Curse].iter());
+            for card in stacks {
+                up.try_append(Mutation::AddStack(*card, card.starting_count(rules.players)));
             }
+            for p in 0..(rules.players as u32) {
+                let player = Enum::<u32>::from_usize(p as usize);
+                for _ in 0..3 {
+                    up.try_append(Mutation::GainCard(player, Card::Estate));
+                }
+                for _ in 0..7 {
+                    up.try_append(Mutation::GainCard(player, Card::Copper));
+                }
+                up.try_append(Mutation::ShuffleDiscard(player));
+                for _ in 0..5 {
+                    up.try_draw_card(player);
+                }
+            }
+            mutations = up.apply();
         }
-        (game, init_muts)
+        (game, mutations)
     }
     fn new(rules: Rules) -> (Game, Mutations) {
         let seed = [
