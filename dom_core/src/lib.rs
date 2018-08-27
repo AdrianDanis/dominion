@@ -185,22 +185,17 @@ impl BoardState {
         self.players.get(p as u32 as usize)
     }
     fn set_players(self, p: Players) -> Option<BoardState> {
-        if self.players.len() != 0 {
-            None
-        } else {
-            let mut b = self;
-            for _ in 0..(p as u32) {
-                b.players.push(
-                    PlayerState {
-                        hand: Vec::new(),
-                        played: CardSet::empty(),
-                        discard: CardSet::empty(),
-                        draw: Vec::new(),
-                    }
-                );
-            }
-            Some(b)
-        }
+        Some(self)
+            .filter(|x| x.players.len() == 0)
+            .map(|mut x| {
+                x.players.append(&mut [PlayerState {
+                    hand: Vec::new(),
+                    played: CardSet::empty(),
+                    discard: CardSet::empty(),
+                    draw: Vec::new(),
+                }].iter().cycle().take(p as usize).cloned().collect());
+                x
+            })
     }
     fn add_stack(self, card: Card, count: u32) -> Option<BoardState> {
         if self.stacks.contains(card) {
@@ -487,14 +482,14 @@ mod tests {
         let (g, _) = Game::new_from_seed(
             Rules {
                 players: Players::Two,
-                set: FIRST_SET,
+                set: card::lists::FIRST_SET,
             },
             DUMMY_SEED
         );
         let (g2, _) = Game::new_from_seed(
             Rules {
                 players: Players::Two,
-                set: FIRST_SET,
+                set: card::lists::FIRST_SET,
             },
             DUMMY_SEED
         );
