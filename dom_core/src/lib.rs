@@ -33,6 +33,12 @@ enum Action {
     EndAction
 }
 
+/// Holds an in progress game update
+///
+/// Most high level game actions consist of multiple smaller board state mutations. This struct wraps
+/// a `BoardState` with the series of `Mutations` that have been applied to it to diverge it from the
+/// original `game`. Once all the updates and logic is complete the update can be applied to the original
+/// `game`.
 struct Update<'a> {
     state: BoardState,
     updates: Mutations,
