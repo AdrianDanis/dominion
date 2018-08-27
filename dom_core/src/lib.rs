@@ -88,6 +88,15 @@ pub struct Game {
 }
 
 impl Game {
+    fn start_stack(c: Card, players: Players) -> Mutation {
+        Mutation::AddStack(c, c.starting_count(players))
+    }
+    pub fn from_state(state: BoardState) -> Option<Game> {
+        Some(Game {state: state})
+    }
+    pub fn from_mutations(mutations: &Mutations) -> Option<Game> {
+        BoardState::from_mutations(mutations).and_then(Self::from_state)
+    }
     /// Create new game with given rules
     fn new_from_seed(rules: Rules, seed: RNGSeed) -> (Game, Mutations) {
         let mut game =
