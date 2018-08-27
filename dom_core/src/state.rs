@@ -303,4 +303,17 @@ mod tests {
         assert_eq!(gs2.supply.count(Card::Copper), 10);
         assert_eq!(gs2.mutate(Mutation::AddStack(Card::Copper, 10)), None);
     }
+    #[test]
+    fn cannot_insert_players_twice() {
+        let gs = BoardState::new(None);
+        assert_eq!(gs.get_player(Player::P0), None);
+        assert_eq!(gs.get_player(Player::P1), None);
+        assert_eq!(gs.get_player(Player::P2), None);
+        let gs2 = gs.mutate(Mutation::SetPlayers(Players::Two)).unwrap();
+        assert_ne!(gs2.get_player(Player::P0), None);
+        assert_ne!(gs2.get_player(Player::P1), None);
+        assert_eq!(gs2.get_player(Player::P2), None);
+        assert_eq!(gs2.clone().mutate(Mutation::SetPlayers(Players::Two)), None);
+        assert_eq!(gs2.mutate(Mutation::SetPlayers(Players::Three)), None);
+    }
 }
