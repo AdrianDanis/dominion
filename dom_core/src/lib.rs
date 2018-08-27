@@ -33,6 +33,38 @@ enum Action {
     EndAction
 }
 
+struct Update<'a> {
+    state: BoardState,
+    updates: Mutations,
+    game: &'a mut Game,
+}
+
+impl<'a> From<&'a mut Game> for Update<'a> {
+    fn from(game: &'a mut Game) -> Update<'a> {
+        Update {
+            state: game.state.clone(),
+            updates: Vec::new(),
+            game: game,
+        }
+    }
+}
+
+impl<'a> Update<'a> {
+    pub fn try_append(&mut self, mutation: Mutation) -> bool {
+        if let Some(state) = self.state.clone().mutate(mutation) {
+            self.state = state;
+            self.updates.push(mutation);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn apply(self) -> Mutations {
+        self.game.state = self.state;
+        self.updates
+    }
+}
+
 /// Defines and runs the rules and logic of a dominion game
 ///
 /// Internally has a `BoardState` and performs actions against it.
@@ -51,52 +83,15 @@ impl Game {
     pub fn from_mutations(mutations: &Mutations) -> Option<Game> {
         BoardState::from_mutations(mutations).and_then(Self::from_state)
     }
-    fn chain_mutate(pair: (BoardState, Mutations), mutation: Mutation) -> Option<(BoardState, Mutations)> {
-        let (state, mut mutations) = pair;
-        state.mutate(mutation)
-            .map(|new_state| {mutations.push(mutation); (new_state, mutations)})
-    }
-    fn start_empty_chain_mutate(&self) -> Option<(BoardState, Mutations)> {
-        Some((self.board_state().clone(), Vec::new()))
-    }
-    fn start_chain_mutate(&self, mutation: Mutation) -> Option<(BoardState, Mutations)> {
-        Self::chain_mutate((self.board_state().clone(), Vec::new()), mutation)
-    }
-    fn apply_mutate_chain(&mut self, pair: Option<(BoardState, Mutations)>) -> Option<Mutations> {
-        if let Some((new_state, mutations)) = pair {
-            self.state = new_state;
-            Some(mutations)
-        } else {
-            None
+    fn try_draw_card(&mut self, player: Player) -> Mutations {
+        // Attempt to shuffle + reveal + draw
+        let mut up = Update::from(self);
+        up.try_append(Mutation::ShuffleDiscard(player));
+        if let Some(card) = up.state.get_player(player).and_then(|p| p.draw_iter().next()) {
+            up.try_append(Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))));
+            up.try_append(Mutation::DrawCard(player));
         }
-    }
-    fn draw_card(&mut self, player: Player) -> Option<Mutations> {
-        let chain =
-            self.start_empty_chain_mutate()
-                // Grab the player and shuffle their discard if we need to
-                .and_then(|state|
-                    state.0.clone().get_player(player)
-                        .and_then(|p|
-                            if p.draw_iter().next() == None && p.discard_iter().next() != None {
-                                Self::chain_mutate(state, Mutation::ShuffleDiscard(player))
-                            } else {
-                                Some(state)
-                            }
-                        )
-                )
-                // Get the player again and reveal + draw if there is a card
-                .and_then(|state|
-                    state.0.clone().get_player(player)
-                        .and_then(|p|
-                            if let Some(card) = p.draw_iter().next() {
-                                Self::chain_mutate(state, Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))))
-                                    .and_then(|state| Self::chain_mutate(state, Mutation::DrawCard(player)))
-                            } else {
-                                Some(state)
-                            }
-                        )
-                );
-        self.apply_mutate_chain(chain)
+        up.apply()
     }
     /// Create new game with given rules
     fn new_from_seed(rules: Rules, seed: RNGSeed) -> (Game, Mutations) {
@@ -137,7 +132,7 @@ impl Game {
         for p in 0..(rules.players as u32) {
             let player = Enum::<u32>::from_usize(p as usize);
             for _ in 0..5 {
-                let mut muts = game.draw_card(player).unwrap();
+                let mut muts = game.try_draw_card(player);
                 init_muts.append(&mut muts);
             }
         }
