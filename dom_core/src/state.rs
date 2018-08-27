@@ -74,6 +74,7 @@ pub enum Mutation {
     SetPhase(Player, PlayerPhase),
     SetBuys(Player, u32),
     SetActions(Player, u32),
+    SetGold(Player, u32),
     /// Reveal hand card(s)
     ///
     /// A players hand is treated as a set of cards and so no IDs are associated with
@@ -116,6 +117,7 @@ pub struct PlayerState {
     actions: u32,
     buys: u32,
     phase: PlayerPhase,
+    gold: u32,
 }
 
 impl PlayerState {
@@ -133,6 +135,15 @@ impl PlayerState {
     }
     pub fn get_phase(&self) -> PlayerPhase {
         self.phase
+    }
+    pub fn get_actions(&self) -> u32 {
+        self.actions
+    }
+    pub fn get_buys(&self) -> u32 {
+        self.buys
+    }
+    pub fn get_gold(&self) -> u32 {
+        self.gold
     }
 }
 
@@ -202,6 +213,7 @@ impl BoardState {
                     actions: 0,
                     buys: 0,
                     phase: PlayerPhase::NotTurn,
+                    gold: 0,
                 }].iter().cycle().take(p as usize).cloned().collect());
                 x
             })
@@ -276,6 +288,9 @@ impl BoardState {
     fn set_actions(self, player: Player, actions: u32) -> Option<BoardState> {
         self.modify_player(player, |player| player.actions = actions)
     }
+    fn set_gold(self, player: Player, gold: u32) -> Option<BoardState> {
+        self.modify_player(player, |player| player.gold = gold)
+    }
     pub fn mutate(self, m: Mutation) -> Option<BoardState> {
         match m {
             Mutation::SetPlayers(p) => self.set_players(p),
@@ -287,6 +302,7 @@ impl BoardState {
             Mutation::SetPhase(p, phase) => self.set_phase(p, phase),
             Mutation::SetBuys(p, buys) => self.set_buys(p, buys),
             Mutation::SetActions(p, actions) => self.set_actions(p, actions),
+            Mutation::SetGold(p, gold) => self.set_gold(p, gold),
             _ => unimplemented!()
         }
     }

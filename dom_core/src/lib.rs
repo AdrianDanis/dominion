@@ -19,15 +19,23 @@ use enum_map::{Enum};
 /// Current state of the game
 ///
 /// This indirectly implies what actions are valid against the game
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum State {
     /// Action phase of the current player
+    ///
+    /// Specifically this means we are waiting for the active player to play an action card or
+    /// go to the buy phase
     ActionPhase,
 }
 
+// TODO: Is there a better way to encode what actions are permissible by different states?
+// Encoding explicit transitions is difficult, but maybe could be modeled as a non deterministic
+// state machine to deal with hidden information from draws / complexity?
 /// Actions that can be performed in the game
 ///
 /// Actions are higher level than mutations and guide the unfolding of the game where
 /// there are choices.
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Action {
     /// End action phase
     EndAction
@@ -90,6 +98,7 @@ impl<'a> Update<'a> {
         self.try_append(Mutation::SetPhase(player, PlayerPhase::Action));
         self.try_append(Mutation::SetBuys(player, 1));
         self.try_append(Mutation::SetActions(player, 1));
+        self.try_append(Mutation::SetGold(player, 0));
     }
 }
 
@@ -162,7 +171,11 @@ impl Game {
         })
     }
     fn state(&self) -> State {
-        unimplemented!()
+        let active = self.board_state().get_player(self.board_state().active_player()).unwrap();
+        match active.get_phase() {
+            PlayerPhase::Action => State::ActionPhase,
+            _ => unimplemented!(),
+        }
     }
     pub fn board_state(&self) -> &BoardState {
         &self.state
@@ -215,5 +228,18 @@ mod tests {
             DUMMY_SEED
         );
         assert_eq!(g.board_state(), g2.board_state());
+    }
+    #[test]
+    fn new_game_first_turn_state() {
+        let g = Game::new_first_game(Players::Two).0;
+        assert_eq!(g.board_state().active_player(), Player::P0);
+        let p0 = g.board_state().get_player(Player::P0).unwrap();
+        assert_eq!(p0.hand_iter().count(), 5);
+        assert_eq!(p0.get_phase(), PlayerPhase::Action);
+        assert_ne!(g.board_state().get_player(Player::P1).unwrap().get_phase(), PlayerPhase::Action);
+        assert_eq!(p0.get_buys(), 1);
+        assert_eq!(p0.get_actions(), 1);
+        assert_eq!(p0.get_gold(), 0);
+        assert_eq!(g.state(), State::ActionPhase);
     }
 }
