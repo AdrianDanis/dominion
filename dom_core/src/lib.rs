@@ -12,12 +12,9 @@ pub use state::{BoardState, Mutations, Player, Mutation, Reveal, PlayerSet, Play
 
 use state::RNGSeed;
 
-use rand::SeedableRng;
-use rand::Rng;
+use rand::random;
 
 use enum_map::{Enum};
-
-const DUMMY_SEED: RNGSeed = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 
 /// Current state of the game
 ///
@@ -147,7 +144,12 @@ impl Game {
         (game, init_muts)
     }
     fn new(rules: Rules) -> (Game, Mutations) {
-        Self::new_from_seed(rules, DUMMY_SEED)
+        let seed = [
+            random(),random(),random(),random(),random(),random(),random(),random(),
+            random(),random(),random(),random(),random(),random(),random(),random(),
+            random(),random(),random(),random(),random(),random(),random(),random(),
+            random(),random(),random(),random(),random(),random(),random(),random()];
+        Self::new_from_seed(rules, seed)
     }
     /// Initialize 'First Game' layout
     pub fn new_first_game(players: Players) -> (Game, Mutations) {
@@ -174,6 +176,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    pub const DUMMY_SEED: RNGSeed = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
     #[test]
     fn two_player_victory_cards() {
         let g = Game::new_first_game(Players::Two).0;

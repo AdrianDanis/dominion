@@ -206,21 +206,18 @@ impl BoardState {
     }
     fn shuffle(self, player: Player) -> Option<BoardState> {
         let mut b = self;
-        if let Some(player) = b.players.get_mut(player as usize) {
-            if player.draw.len() == 0 {
-                let discard = player.discard.drain();
-                // check if we have rng powers to shuffle
-                if let Some(mut rng) = b.rand.as_mut() {
-                    player.draw = discard.map(|x| Some(x)).collect();
-                    rng.shuffle(player.draw.as_mut_slice());
-                } else {
-                    player.draw = discard.map(|_| None).collect();
-                }
+        // Temporary scope so we can move `b` later on
+        {
+            let p = b.players.get_mut(player as usize)
+                .filter(|p| p.draw.len() == 0)?;
+            let discard = p.discard.drain();
+            // check if we have rng powers to shuffle
+            if let Some(mut rng) = b.rand.as_mut() {
+                p.draw = discard.map(|x| Some(x)).collect();
+                rng.shuffle(p.draw.as_mut_slice());
             } else {
-                return None
+                p.draw = discard.map(|_| None).collect();
             }
-        } else {
-            return None;
         }
         Some(b)
     }
@@ -311,5 +308,42 @@ mod tests {
         assert_eq!(gs2.get_player(Player::P2), None);
         assert_eq!(gs2.clone().mutate(Mutation::SetPlayers(Players::Two)), None);
         assert_eq!(gs2.mutate(Mutation::SetPlayers(Players::Three)), None);
+    }
+    fn two_player_with_stacks() -> BoardState {
+        let mut bs = BoardState::new(Some(::tests::DUMMY_SEED));
+        bs = bs.mutate(Mutation::SetPlayers(Players::Two)).unwrap();
+        bs.players[0].discard.insert(Card::Copper, 9);
+        bs.players[0].discard.insert(Card::Silver, 3);
+        bs.players[0].discard.insert(Card::Gold, 42);
+        return bs;
+    }
+    #[test]
+    fn shuffle_preserves_cards() {
+        let mut bs = two_player_with_stacks();
+        bs = bs.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
+        assert_eq!(bs.players[0].draw.len(), 9 + 3 + 42);
+        assert_eq!(bs.players[0].draw.iter().filter(|x| **x == Some(Card::Copper)).count(), 9);
+        assert_eq!(bs.players[0].draw.iter().filter(|x| **x == Some(Card::Silver)).count(), 3);
+        assert_eq!(bs.players[0].draw.iter().filter(|x| **x == Some(Card::Gold)).count(), 42);
+    }
+    #[test]
+    fn shuffle_rng_changes() {
+        let mut bs = two_player_with_stacks();
+        bs = bs.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
+        let cards = bs.players[0].draw.clone();
+        bs.players[0].draw = Vec::new();
+        bs.players[0].discard.insert(Card::Copper, 9);
+        bs.players[0].discard.insert(Card::Silver, 3);
+        bs.players[0].discard.insert(Card::Gold, 42);
+        bs = bs.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
+        assert_ne!(bs.players[0].draw, cards);
+    }
+    #[test]
+    fn shuffle_stable() {
+        let mut bs1 = two_player_with_stacks();
+        let mut bs2 = two_player_with_stacks();
+        bs1 = bs1.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
+        bs2 = bs2.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
+        assert_eq!(bs1.players[0], bs2.players[0]);
     }
 }
