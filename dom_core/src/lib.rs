@@ -198,14 +198,13 @@ impl BoardState {
             })
     }
     fn add_stack(self, card: Card, count: u32) -> Option<BoardState> {
-        if self.stacks.contains(card) {
-            None
-        } else {
-            let mut b = self;
-            b.stacks.insert(card, 1);
-            b.supply.insert(card, count);
-            Some(b)
-        }
+        Some(self)
+            .filter(|x| !x.stacks.contains(card))
+            .map(|mut x| {
+                x.stacks.insert(card, 1);
+                x.supply.insert(card, count);
+                x}
+            )
     }
     fn gain_card(self, player: Player, card: Card) -> Option<BoardState> {
         let mut b = self;
@@ -494,5 +493,15 @@ mod tests {
             DUMMY_SEED
         );
         assert_eq!(g.board_state(), g2.board_state());
+    }
+
+    // board state tests
+    #[test]
+    fn cannot_insert_stack_twice() {
+        let gs = BoardState::new(None);
+        assert_eq!(gs.supply.count(Card::Copper), 0);
+        let gs2 = gs.mutate(Mutation::AddStack(Card::Copper, 10)).unwrap();
+        assert_eq!(gs2.supply.count(Card::Copper), 10);
+        assert_eq!(gs2.mutate(Mutation::AddStack(Card::Copper, 10)), None);
     }
 }
