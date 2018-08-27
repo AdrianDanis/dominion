@@ -223,15 +223,14 @@ impl BoardState {
     }
     fn reveal_top_deck(self, player: Player, card: Option<Card>, reveal: Reveal) -> Option<BoardState> {
         let mut b = self;
-        if let Some(player) = b.players.get_mut(player as usize) {
-            if let Some(_) = player.draw.pop() {
-                // Should probably check that if we already knew the card we are not changing its information
-                player.draw.push(card);
-            } else {
-                return None;
-            }
-        } else {
-            return None;
+        {
+            let p = b.players.get_mut(player as usize)?;
+            // We silently ignore attempts to claim that we no longer know what a card is (i.e. if we should
+            // change a card from Some(x) to None), but we do consider it an error to attempt to change the
+            // information of a card
+            let old_card = p.draw.pop()
+                .filter(|d| d.is_none() || card.is_none() || *d == card)?;
+            p.draw.push(card.or(old_card));
         }
         Some(b)
     }
@@ -345,5 +344,17 @@ mod tests {
         bs1 = bs1.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
         bs2 = bs2.mutate(Mutation::ShuffleDiscard(Player::P0)).unwrap();
         assert_eq!(bs1.players[0], bs2.players[0]);
+    }
+    #[test]
+    fn reveal_cannot_throw_information() {
+        let mut bs = two_player_with_stacks();
+        bs.players[0].draw.push(Some(Card::Copper));
+        // Sanity check that revealing the same card works
+        assert_ne!(bs.clone().mutate(Mutation::RevealTopDeck(Player::P0, Some(Card::Copper), Reveal::All)), None);
+        // Attempt to turn it into a none. Should succeed with information unchanged
+        bs = bs.mutate(Mutation::RevealTopDeck(Player::P0, None, Reveal::All)).unwrap();
+        assert_eq!(bs.players[0].draw[0], Some(Card::Copper));
+        // Should not be able to change cards though
+        assert_eq!(bs.mutate(Mutation::RevealTopDeck(Player::P0, Some(Card::Gold), Reveal::All)), None);
     }
 }
