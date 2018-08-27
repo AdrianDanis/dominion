@@ -8,7 +8,7 @@ mod rules;
 
 pub use card::{Card, CardSet};
 pub use rules::{Players, Rules};
-pub use state::{BoardState, Mutations, Player, Mutation, Reveal, PlayerSet, PlayerState};
+pub use state::{BoardState, Mutations, Player, Mutation, Reveal, PlayerSet, PlayerState, PlayerPhase};
 
 use state::RNGSeed;
 
@@ -69,12 +69,27 @@ impl<'a> Update<'a> {
         self.game.state = self.state;
         self.updates
     }
-    fn try_draw_card(&mut self, player: Player) {
+    fn try_draw_card(&mut self, player: Player) -> bool {
         // Attempt to shuffle + reveal + draw
         self.try_append(Mutation::ShuffleDiscard(player));
         if let Some(card) = self.state.get_player(player).and_then(|p| p.draw_iter().next()) {
-            self.try_append(Mutation::DrawCard(player, card));
+            self.try_append(Mutation::DrawCard(player, card))
+        } else {
+            false
         }
+    }
+    fn begin_turn(&mut self, player: Player) {
+        // end the current players turn if neccessary
+        let last_active = self.state.active_player();
+        self.state.get_player(last_active).map(|p| p.get_phase())
+            .filter(|phase| *phase != PlayerPhase::NotTurn)
+            .map(|_|
+                self.try_append(Mutation::SetPhase(last_active, PlayerPhase::NotTurn))
+            );
+        self.try_append(Mutation::ChangeTurn(player));
+        self.try_append(Mutation::SetPhase(player, PlayerPhase::Action));
+        self.try_append(Mutation::SetBuys(player, 1));
+        self.try_append(Mutation::SetActions(player, 1));
     }
 }
 
@@ -126,6 +141,7 @@ impl Game {
                     up.try_draw_card(player);
                 }
             }
+            up.begin_turn(Player::P0);
             mutations = up.apply();
         }
         (game, mutations)

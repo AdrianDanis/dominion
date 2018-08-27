@@ -71,6 +71,9 @@ pub enum Mutation {
     /// When switching the active player its phase and other typically transient state must
     /// be initialized
     ChangeTurn(Player),
+    SetPhase(Player, PlayerPhase),
+    SetBuys(Player, u32),
+    SetActions(Player, u32),
     /// Reveal hand card(s)
     ///
     /// A players hand is treated as a set of cards and so no IDs are associated with
@@ -97,8 +100,8 @@ pub enum Mutation {
 /// Convenience alias for grouping ordered mutations
 pub type Mutations = Vec<Mutation>;
 
-#[derive(Debug, Copy, Clone)]
-enum PlayerPhase {
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum PlayerPhase {
     Action,
     Buy,
     NotTurn,
@@ -127,6 +130,9 @@ impl PlayerState {
     }
     pub fn draw_iter(&self) -> impl Iterator<Item = Option<Card>> {
         self.draw.clone().into_iter().rev()
+    }
+    pub fn get_phase(&self) -> PlayerPhase {
+        self.phase
     }
 }
 
@@ -235,16 +241,40 @@ impl BoardState {
         }
         Some(b)
     }
+    fn try_modify_player<F: Fn(&mut PlayerState) -> Option<()>>(self, player: Player, f: F) -> Option<BoardState> {
+        Some(self)
+            .and_then(|mut state| state.players.get_mut(player as usize)
+                .and_then(|player| f(player))
+                .map(|_| state)
+            )
+    }
+    fn modify_player<F: Fn(&mut PlayerState)>(self, player: Player, f: F) -> Option<BoardState> {
+        self.try_modify_player(player, |player| {f(player);Some(())})
+    }
     fn draw_card(self, player: Player, card: Option<Card>) -> Option<BoardState> {
-        let mut b = self;
-        {
-            let player = b.players.get_mut(player as usize)?;
-            let draw_card = player.draw.pop()
-                .filter(|c| c.is_none() || card.is_none() || *c == card)?;
-            // Use the drawn card or provided card, whichever has the most information
-            player.hand.push(draw_card.or(card));
-        }
-        Some(b)
+        self.try_modify_player(player,
+            |player| {
+                let draw_card = player.draw.pop()
+                    .filter(|c| c.is_none() || card.is_none() || *c == card)?;
+                // Use the drawn card or provided card, whichever has the most information
+                player.hand.push(draw_card.or(card));
+                Some(())
+            }
+        )
+    }
+    fn change_turn(self, player: Player) -> Option<BoardState> {
+        Some(self)
+            .filter(|state| state.players.get(player as usize) != None)
+            .map(|mut state| {state.turn = player; state})
+    }
+    fn set_phase(self, player: Player, phase: PlayerPhase) -> Option<BoardState> {
+        self.modify_player(player, |player| player.phase = phase)
+    }
+    fn set_buys(self, player: Player, buys: u32) -> Option<BoardState> {
+        self.modify_player(player, |player| player.buys = buys)
+    }
+    fn set_actions(self, player: Player, actions: u32) -> Option<BoardState> {
+        self.modify_player(player, |player| player.actions = actions)
     }
     pub fn mutate(self, m: Mutation) -> Option<BoardState> {
         match m {
@@ -253,6 +283,10 @@ impl BoardState {
             Mutation::GainCard(p, c) => self.gain_card(p, c),
             Mutation::ShuffleDiscard(p) => self.shuffle(p),
             Mutation::DrawCard(p, c) => self.draw_card(p, c),
+            Mutation::ChangeTurn(p) => self.change_turn(p),
+            Mutation::SetPhase(p, phase) => self.set_phase(p, phase),
+            Mutation::SetBuys(p, buys) => self.set_buys(p, buys),
+            Mutation::SetActions(p, actions) => self.set_actions(p, actions),
             _ => unimplemented!()
         }
     }
