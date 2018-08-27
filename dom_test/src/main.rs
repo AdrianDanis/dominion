@@ -121,8 +121,8 @@ fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player
 
 fn main() {
     let (mut game, mutations) = dom_core::Game::new_first_game(dom_core::Players::Two);
-    let mut game_p0 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P0)).unwrap();
-    let mut game_p1 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P1)).unwrap();
+    let mut game_p0 = dom_core::BoardState::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P0)).unwrap();
+    let mut game_p1 = dom_core::BoardState::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P1)).unwrap();
 //    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
     print_board_state(game.board_state());
     let perspective = match game.board_state().active_player() {
@@ -133,7 +133,7 @@ fn main() {
     println!("");
     println!("Game from active player perspective");
     println!("Player 1");
-    show_player(perspective.board_state().get_player(dom_core::Player::P0).unwrap());
+    show_player(perspective.get_player(dom_core::Player::P0).unwrap());
     println!("Player 2");
-    show_player(perspective.board_state().get_player(dom_core::Player::P1).unwrap());
+    show_player(perspective.get_player(dom_core::Player::P1).unwrap());
 }
