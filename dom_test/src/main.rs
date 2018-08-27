@@ -113,7 +113,7 @@ fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player
     mutations.into_iter().map(|x|
         match x {
             dom_core::Mutation::RevealHandCards(p, s, r) => unimplemented!(),
-            dom_core::Mutation::RevealTopDeck(p, c, dom_core::Reveal::Just(ps)) if !ps.contains(player) => dom_core::Mutation::RevealTopDeck(p, None, dom_core::Reveal::Just(ps)),
+            dom_core::Mutation::DrawCard(p, c) if p != player => dom_core::Mutation::DrawCard(p, None),
             other => other
         }
     ).collect()

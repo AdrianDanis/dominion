@@ -4,7 +4,7 @@ use rand::Rng;
 use card::{Card, CardSet};
 use rules::Players;
 
-#[derive(Debug, Clone, Copy, Enum)]
+#[derive(Debug, Clone, Copy, Enum, PartialEq)]
 #[repr(u32)]
 pub enum Player {
     P0 = 0,
@@ -58,11 +58,19 @@ pub enum Mutation {
     /// Players can only be set once and must be set prior to performing any mutations
     /// that require a `Player`.
     SetPlayers(Players),
+    /// Change the phase of a player
+    ///
+    /// When changin the phase
     /// Add card stack
     ///
     /// Card stacks are treated specially by the state as you can only add a kind of stack
     /// once and a count of
     AddStack(Card, u32),
+    /// Change the active player
+    ///
+    /// When switching the active player its phase and other typically transient state must
+    /// be initialized
+    ChangeTurn(Player),
     /// Reveal hand card(s)
     ///
     /// A players hand is treated as a set of cards and so no IDs are associated with
@@ -72,17 +80,10 @@ pub enum Mutation {
     /// The cards are optional to allow for game states that do not have full knowledge to
     /// still talk about a reveal happening.
     RevealHandCards(Player, Option<CardSet>, Reveal),
-    /// Reveal top deck
-    ///
-    /// Reveals the top card of a players deck
-    ///
-    /// The card is optional to allow for game states that do not have full knowledge to
-    /// still talk about a reveal happening.
-    RevealTopDeck(Player, Option<Card>, Reveal),
     /// Draw top card of the deck
     ///
-    /// Takes the top card of the players deck and puts it in their hand
-    DrawCard(Player),
+    /// Takes the top card of the players deck and puts it in their hand.
+    DrawCard(Player, Option<Card>),
     /// Move a card from hand to play area
     PlayCard(Player, Card),
     /// Gain a card from supply to discard
@@ -96,12 +97,22 @@ pub enum Mutation {
 /// Convenience alias for grouping ordered mutations
 pub type Mutations = Vec<Mutation>;
 
+#[derive(Debug, Copy, Clone)]
+enum PlayerPhase {
+    Action,
+    Buy,
+    NotTurn,
+}
+
 #[derive(Debug, Clone)]
 pub struct PlayerState {
     hand: Vec<Option<Card>>,
     played: CardSet,
     discard: CardSet,
     draw: Vec<Option<Card>>,
+    actions: u32,
+    buys: u32,
+    phase: PlayerPhase,
 }
 
 impl PlayerState {
@@ -182,6 +193,9 @@ impl BoardState {
                     played: CardSet::empty(),
                     discard: CardSet::empty(),
                     draw: Vec::new(),
+                    actions: 0,
+                    buys: 0,
+                    phase: PlayerPhase::NotTurn,
                 }].iter().cycle().take(p as usize).cloned().collect());
                 x
             })
@@ -221,25 +235,14 @@ impl BoardState {
         }
         Some(b)
     }
-    fn reveal_top_deck(self, player: Player, card: Option<Card>, reveal: Reveal) -> Option<BoardState> {
-        let mut b = self;
-        {
-            let p = b.players.get_mut(player as usize)?;
-            // We silently ignore attempts to claim that we no longer know what a card is (i.e. if we should
-            // change a card from Some(x) to None), but we do consider it an error to attempt to change the
-            // information of a card
-            let old_card = p.draw.pop()
-                .filter(|d| d.is_none() || card.is_none() || *d == card)?;
-            p.draw.push(card.or(old_card));
-        }
-        Some(b)
-    }
-    fn draw_card(self, player: Player) -> Option<BoardState> {
+    fn draw_card(self, player: Player, card: Option<Card>) -> Option<BoardState> {
         let mut b = self;
         {
             let player = b.players.get_mut(player as usize)?;
-            let card = player.draw.pop()?;
-            player.hand.push(card);
+            let draw_card = player.draw.pop()
+                .filter(|c| c.is_none() || card.is_none() || *c == card)?;
+            // Use the drawn card or provided card, whichever has the most information
+            player.hand.push(draw_card.or(card));
         }
         Some(b)
     }
@@ -249,8 +252,7 @@ impl BoardState {
             Mutation::AddStack(card, count) => self.add_stack(card, count),
             Mutation::GainCard(p, c) => self.gain_card(p, c),
             Mutation::ShuffleDiscard(p) => self.shuffle(p),
-            Mutation::RevealTopDeck(p, c, r) => self.reveal_top_deck(p, c, r),
-            Mutation::DrawCard(p) => self.draw_card(p),
+            Mutation::DrawCard(p, c) => self.draw_card(p, c),
             _ => unimplemented!()
         }
     }
@@ -342,15 +344,15 @@ mod tests {
         assert_eq!(bs1.players[0], bs2.players[0]);
     }
     #[test]
-    fn reveal_cannot_throw_information() {
+    fn draw_cannot_throw_information() {
         let mut bs = two_player_with_stacks();
         bs.players[0].draw.push(Some(Card::Copper));
         // Sanity check that revealing the same card works
-        assert_ne!(bs.clone().mutate(Mutation::RevealTopDeck(Player::P0, Some(Card::Copper), Reveal::All)), None);
+        assert_ne!(bs.clone().mutate(Mutation::DrawCard(Player::P0, Some(Card::Copper))), None);
         // Attempt to turn it into a none. Should succeed with information unchanged
-        bs = bs.mutate(Mutation::RevealTopDeck(Player::P0, None, Reveal::All)).unwrap();
-        assert_eq!(bs.players[0].draw[0], Some(Card::Copper));
+        let bs1 = bs.clone().mutate(Mutation::DrawCard(Player::P0, None)).unwrap();
+        assert_eq!(bs1.players[0].hand[0], Some(Card::Copper));
         // Should not be able to change cards though
-        assert_eq!(bs.mutate(Mutation::RevealTopDeck(Player::P0, Some(Card::Gold), Reveal::All)), None);
+        assert_eq!(bs.mutate(Mutation::DrawCard(Player::P0, Some(Card::Gold))), None);
     }
 }

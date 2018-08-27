@@ -73,8 +73,7 @@ impl<'a> Update<'a> {
         // Attempt to shuffle + reveal + draw
         self.try_append(Mutation::ShuffleDiscard(player));
         if let Some(card) = self.state.get_player(player).and_then(|p| p.draw_iter().next()) {
-            self.try_append(Mutation::RevealTopDeck(player, card, Reveal::Just(PlayerSet::just(player))));
-            self.try_append(Mutation::DrawCard(player));
+            self.try_append(Mutation::DrawCard(player, card));
         }
     }
 }
