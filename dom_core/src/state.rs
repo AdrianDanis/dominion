@@ -196,17 +196,13 @@ impl BoardState {
             )
     }
     fn gain_card(self, player: Player, card: Card) -> Option<BoardState> {
-        let mut b = self;
-        if b.supply.take(card, 1) {
-            if let Some(player) = b.players.get_mut(player as usize) {
-                player.discard.insert(card, 1);
-            } else {
-                return None;
-            }
-            Some(b)
-        } else {
-            None
-        }
+        Some(self)
+            .and_then(|mut state| if state.supply.take(card, 1) { Some(state) } else { None })
+            .and_then(|mut state|
+                state.players.get_mut(player as usize)
+                    .map(|p| p.discard.insert(card, 1))
+                    .map(|_| state)
+            )
     }
     fn shuffle(self, player: Player) -> Option<BoardState> {
         let mut b = self;
