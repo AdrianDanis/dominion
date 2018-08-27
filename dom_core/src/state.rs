@@ -236,14 +236,10 @@ impl BoardState {
     }
     fn draw_card(self, player: Player) -> Option<BoardState> {
         let mut b = self;
-        if let Some(player) = b.players.get_mut(player as usize) {
-            if let Some(card) = player.draw.pop() {
-                player.hand.push(card);
-            } else {
-                return None;
-            }
-        } else {
-            return None;
+        {
+            let player = b.players.get_mut(player as usize)?;
+            let card = player.draw.pop()?;
+            player.hand.push(card);
         }
         Some(b)
     }
