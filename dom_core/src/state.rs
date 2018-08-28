@@ -4,11 +4,9 @@ use rand::Rng;
 use card::{Card, CardSet};
 use rules::Players;
 
-use enum_map::Enum;
+use std::slice;
 
-//TODO: do not dangerously use from_usize of enum_map as we rely on assumptions of how it works
-
-#[derive(Debug, Clone, Copy, Enum, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u32)]
 pub enum Player {
     P0 = 0,
@@ -17,9 +15,22 @@ pub enum Player {
     P3 = 3,
 }
 
+const PLAYER_LIST_TWO: [Player; 2] = [Player::P0, Player::P1];
+const PLAYER_LIST_THREE: [Player; 3] = [Player::P0, Player::P1, Player::P2];
+const PLAYER_LIST_FOUR: [Player; 4] = [Player::P0, Player::P1, Player::P2, Player::P3];
+
 impl Player {
     pub fn next(&self, players: Players) -> Player {
-        Enum::<u32>::from_usize((((*self as u32 + 1) % (players as u32))) as usize)
+        let mut iter = Self::iter_players(players).cycle();
+        iter.find(|x| *x == self);
+        *iter.next().unwrap()
+    }
+    pub fn iter_players(players: Players) -> slice::Iter<'static, Player> {
+        match players {
+            Players::Two => PLAYER_LIST_TWO.iter(),
+            Players::Three => PLAYER_LIST_THREE.iter(),
+            Players::Four => PLAYER_LIST_FOUR.iter(),
+        }.into_iter()
     }
 }
 

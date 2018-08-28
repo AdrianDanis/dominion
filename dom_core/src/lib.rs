@@ -16,8 +16,6 @@ use state::RNGSeed;
 
 use rand::random;
 
-use enum_map::{Enum};
-
 /// Current state of the game
 ///
 /// This indirectly implies what actions are valid against the game
@@ -159,17 +157,16 @@ impl Game {
             for card in stacks {
                 up.try_append(Mutation::AddStack(*card, card.starting_count(rules.players)));
             }
-            for p in 0..(rules.players as u32) {
-                let player = Enum::<u32>::from_usize(p as usize);
+            for player in Player::iter_players(rules.players) {
                 for _ in 0..3 {
-                    up.try_append(Mutation::GainCard(player, Card::Estate));
+                    up.try_append(Mutation::GainCard(*player, Card::Estate));
                 }
                 for _ in 0..7 {
-                    up.try_append(Mutation::GainCard(player, Card::Copper));
+                    up.try_append(Mutation::GainCard(*player, Card::Copper));
                 }
-                up.try_append(Mutation::ShuffleDiscard(player));
+                up.try_append(Mutation::ShuffleDiscard(*player));
                 for _ in 0..5 {
-                    up.try_draw_card(player);
+                    up.try_draw_card(*player);
                 }
             }
             up.begin_turn(Player::P0);

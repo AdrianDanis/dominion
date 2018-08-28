@@ -3,7 +3,7 @@ use enum_map;
 
 /// Enumeration of all different cards
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, Enum, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Enum)]
 pub enum Card {
     // Teasure
     Copper,
