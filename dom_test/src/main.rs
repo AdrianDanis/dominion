@@ -121,6 +121,12 @@ fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player
 }
 
 fn make_action(game: &dom_core::Game, input: &str) -> Option<dom_core::Action> {
+    if input == "buy" && game.state() == dom_core::State::ActionPhase {
+        return Some(dom_core::Action::EndAction);
+    }
+    if input == "turn" {
+        return Some(dom_core::Action::EndBuy);
+    }
     None
 }
 

@@ -4,6 +4,10 @@ use rand::Rng;
 use card::{Card, CardSet};
 use rules::Players;
 
+use enum_map::Enum;
+
+//TODO: do not dangerously use from_usize of enum_map as we rely on assumptions of how it works
+
 #[derive(Debug, Clone, Copy, Enum, PartialEq)]
 #[repr(u32)]
 pub enum Player {
@@ -11,6 +15,12 @@ pub enum Player {
     P1 = 1,
     P2 = 2,
     P3 = 3,
+}
+
+impl Player {
+    pub fn next(&self, players: Players) -> Player {
+        Enum::<u32>::from_usize((((*self as u32 + 1) % (players as u32))) as usize)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -75,6 +85,15 @@ pub enum Mutation {
     SetBuys(Player, u32),
     SetActions(Player, u32),
     SetGold(Player, u32),
+    /// Discard a card from hand to discard pile
+    ///
+    /// Cards are always publicly revealed at the point they are discarded
+    DiscardHand(Player, Card),
+    /// Discard all played cards
+    ///
+    /// There is never a reason to discard and individual played card and so always discarding
+    /// all at once prevents us from talking about which of a duplicated played card we are discarding
+    DiscardPlayed(Player),
     /// Reveal hand card(s)
     ///
     /// A players hand is treated as a set of cards and so no IDs are associated with
@@ -201,6 +220,14 @@ impl BoardState {
     pub fn get_player(&self, p: Player) -> Option<&PlayerState> {
         self.players.get(p as u32 as usize)
     }
+    pub fn num_players(&self) -> Option<Players> {
+        match self.players.len() {
+            2 => Some(Players::Two),
+            3 => Some(Players::Three),
+            4 => Some(Players::Four),
+            _ => None
+        }
+    }
     fn set_players(self, p: Players) -> Option<BoardState> {
         Some(self)
             .filter(|x| x.players.len() == 0)
@@ -291,6 +318,24 @@ impl BoardState {
     fn set_gold(self, player: Player, gold: u32) -> Option<BoardState> {
         self.modify_player(player, |player| player.gold = gold)
     }
+    fn discard_hand(self, player: Player, card: Card) -> Option<BoardState> {
+        self.try_modify_player(player, |player| {
+                // try and remove specific card. if it fails try and remove a None
+                if player.hand.remove_item(&Some(card)).is_none() {
+                    player.hand.remove_item(&None)?;
+                }
+                player.discard.insert(card, 1);
+                Some(())
+            }
+        )
+    }
+    fn discard_played(self, player: Player) -> Option<BoardState> {
+        self.modify_player(player, |player|
+            for card in player.played.drain() {
+                player.discard.insert(card, 1);
+            }
+        )
+    }
     pub fn mutate(self, m: Mutation) -> Option<BoardState> {
         match m {
             Mutation::SetPlayers(p) => self.set_players(p),
@@ -303,7 +348,9 @@ impl BoardState {
             Mutation::SetBuys(p, buys) => self.set_buys(p, buys),
             Mutation::SetActions(p, actions) => self.set_actions(p, actions),
             Mutation::SetGold(p, gold) => self.set_gold(p, gold),
-            _ => unimplemented!()
+            Mutation::DiscardHand(p, card) => self.discard_hand(p, card),
+            Mutation::DiscardPlayed(p) => self.discard_played(p),
+            _ => unimplemented!("{:?}", m)
         }
     }
     /// Counts how many of a certain card are presently in the supply

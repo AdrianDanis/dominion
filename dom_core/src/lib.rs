@@ -1,3 +1,5 @@
+#![feature(vec_remove_item)]
+
 #[macro_use]
 extern crate enum_map;
 extern crate rand;
@@ -40,7 +42,9 @@ pub enum State {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Action {
     /// End action phase
-    EndAction
+    EndAction,
+    /// End buy phase
+    EndBuy,
 }
 
 /// Holds an in progress game update
@@ -88,7 +92,7 @@ impl<'a> Update<'a> {
             None
         }
     }
-    fn begin_turn(&mut self, player: Player) {
+    fn begin_turn(&mut self, player: Player) -> Option<()> {
         // end the current players turn if neccessary
         let last_active = self.state.active_player();
         self.state.get_player(last_active).map(|p| p.get_phase())
@@ -96,11 +100,27 @@ impl<'a> Update<'a> {
             .map(|_|
                 self.try_append(Mutation::SetPhase(last_active, PlayerPhase::NotTurn))
             );
-        self.try_append(Mutation::ChangeTurn(player));
-        self.try_append(Mutation::SetPhase(player, PlayerPhase::Action));
-        self.try_append(Mutation::SetBuys(player, 1));
-        self.try_append(Mutation::SetActions(player, 1));
-        self.try_append(Mutation::SetGold(player, 0));
+        self.try_append(Mutation::ChangeTurn(player))?;
+        self.try_append(Mutation::SetPhase(player, PlayerPhase::Action))?;
+        self.try_append(Mutation::SetBuys(player, 1))?;
+        self.try_append(Mutation::SetActions(player, 1))?;
+        self.try_append(Mutation::SetGold(player, 0))
+    }
+    fn end_turn(&mut self, player: Player) -> Option<()>{
+        // Create a copy of the hand to get around borrowing whilst updating problems
+        let hand = self.state.get_player(player)?.hand_iter().collect::<Vec<Option<Card>>>();
+        // discard hand
+        for card in hand {
+            self.try_append(Mutation::DiscardHand(player, card?))?;
+        }
+        // discard played cards
+        self.try_append(Mutation::DiscardPlayed(player))?;
+        // draw a new hand. These draws can fail as our deck may be too small
+        for _ in 0..5 {
+            self.try_draw_card(player);
+        }
+        // change phase
+        self.try_append(Mutation::SetPhase(player, PlayerPhase::NotTurn))
     }
 }
 
@@ -176,6 +196,7 @@ impl Game {
         let active = self.board_state().get_player(self.board_state().active_player()).unwrap();
         match active.get_phase() {
             PlayerPhase::Action => State::ActionPhase,
+            PlayerPhase::Buy => State::BuyPhase,
             _ => unimplemented!(),
         }
     }
@@ -192,6 +213,12 @@ impl Game {
         let mut up = Update::from(self);
         match action {
             Action::EndAction if state == State::ActionPhase => {up.try_append(Mutation::SetPhase(active,PlayerPhase::Buy)); Some(up.apply())},
+            Action::EndBuy if state == State::BuyPhase => {
+                let next = active.next(up.state.num_players().unwrap());
+                up.end_turn(active)?;
+                up.begin_turn(next)?;
+                Some(up.apply())
+            },
             _ => None
         }
     }

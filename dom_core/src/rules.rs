@@ -1,7 +1,7 @@
 use card::Card;
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Enum)]
 pub enum Players {
     Two = 2,
     Three = 3,
