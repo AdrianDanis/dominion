@@ -20,12 +20,14 @@ use enum_map::{Enum};
 ///
 /// This indirectly implies what actions are valid against the game
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum State {
+pub enum State {
     /// Action phase of the current player
     ///
     /// Specifically this means we are waiting for the active player to play an action card or
     /// go to the buy phase
     ActionPhase,
+    /// Buy phase of the current player
+    BuyPhase,
 }
 
 // TODO: Is there a better way to encode what actions are permissible by different states?
@@ -36,7 +38,7 @@ enum State {
 /// Actions are higher level than mutations and guide the unfolding of the game where
 /// there are choices.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Action {
+pub enum Action {
     /// End action phase
     EndAction
 }
@@ -64,26 +66,26 @@ impl<'a> From<&'a mut Game> for Update<'a> {
 }
 
 impl<'a> Update<'a> {
-    fn try_append(&mut self, mutation: Mutation) -> bool {
+    fn try_append(&mut self, mutation: Mutation) -> Option<()> {
         if let Some(state) = self.state.clone().mutate(mutation) {
             self.state = state;
             self.updates.push(mutation);
-            true
+            Some(())
         } else {
-            false
+            None
         }
     }
     fn apply(self) -> Mutations {
         self.game.state = self.state;
         self.updates
     }
-    fn try_draw_card(&mut self, player: Player) -> bool {
+    fn try_draw_card(&mut self, player: Player) -> Option<()> {
         // Attempt to shuffle + reveal + draw
         self.try_append(Mutation::ShuffleDiscard(player));
         if let Some(card) = self.state.get_player(player).and_then(|p| p.draw_iter().next()) {
             self.try_append(Mutation::DrawCard(player, card))
         } else {
-            false
+            None
         }
     }
     fn begin_turn(&mut self, player: Player) {
@@ -170,7 +172,7 @@ impl Game {
             set: card::lists::FIRST_SET,
         })
     }
-    fn state(&self) -> State {
+    pub fn state(&self) -> State {
         let active = self.board_state().get_player(self.board_state().active_player()).unwrap();
         match active.get_phase() {
             PlayerPhase::Action => State::ActionPhase,
@@ -184,8 +186,20 @@ impl Game {
     ///
     /// If the action can be successfully performed the internal game state is updated
     /// and the list of mutations that were performed is returned.
-    fn act(&mut self, action: Action) -> Option<Mutations> {
-        unimplemented!()
+    pub fn act(&mut self, action: Action) -> Option<Mutations> {
+        let state = self.state();
+        let active = self.board_state().active_player();
+        let mut up = Update::from(self);
+        match action {
+            Action::EndAction if state == State::ActionPhase => {up.try_append(Mutation::SetPhase(active,PlayerPhase::Buy)); Some(up.apply())},
+            _ => None
+        }
+    }
+    pub fn apply_mutations(&mut self, mutations: &Mutations) -> bool {
+        match self.state.clone().mutate_multi(mutations) {
+            Some(new_state) => {self.state = new_state; true},
+            None => false,
+        }
     }
 }
 

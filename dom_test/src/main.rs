@@ -1,6 +1,6 @@
 extern crate dom_core;
 
-use std::fmt;
+use std::{io, fmt};
 use dom_core::card;
 
 struct SupplyCard {
@@ -107,6 +107,7 @@ fn show_player(player: &dom_core::PlayerState) {
     println!("Played: {:?}", played_vec);
     println!("Deck: [{}]", MaybeCardList::from(player.draw_iter()));
     println!("Discard: NOT DISPLAYED");
+    println!("Actions: {} Buys: {} Gold: {}", player.get_actions(), player.get_buys(), player.get_gold());
 }
 
 fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player) -> dom_core::Mutations {
@@ -119,21 +120,53 @@ fn mutations_for_player(mutations: dom_core::Mutations, player: dom_core::Player
     ).collect()
 }
 
+fn make_action(game: &dom_core::Game, input: &str) -> Option<dom_core::Action> {
+    None
+}
+
 fn main() {
     let (mut game, mutations) = dom_core::Game::new_first_game(dom_core::Players::Two);
     let mut game_p0 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P0)).unwrap();
     let mut game_p1 = dom_core::Game::from_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P1)).unwrap();
 //    println!("Build initial game\n{:?}\nThen using mutations\n{:?}\nBuilt perspective p0\n{:?}\nAnd perspective p1\n{:?}\n", game, mutations, game_p0, game_p1);
-    print_board_state(game.board_state());
-    let perspective = match game.board_state().active_player() {
-        dom_core::Player::P0 => &game_p0,
-        dom_core::Player::P1 => &game_p1,
-        _ => panic!("Game should only have two players"),
-    };
-    println!("");
-    println!("Game from active player perspective");
-    println!("Player 1");
-    show_player(perspective.board_state().get_player(dom_core::Player::P0).unwrap());
-    println!("Player 2");
-    show_player(perspective.board_state().get_player(dom_core::Player::P1).unwrap());
+    loop {
+        print_board_state(game.board_state());
+        {
+            let perspective = match game.board_state().active_player() {
+                dom_core::Player::P0 => &game_p0,
+                dom_core::Player::P1 => &game_p1,
+                _ => panic!("Game should only have two players"),
+            };
+            println!("");
+            println!("Game from active player perspective");
+            println!("Player 1");
+            show_player(perspective.board_state().get_player(dom_core::Player::P0).unwrap());
+            println!("Player 2");
+            show_player(perspective.board_state().get_player(dom_core::Player::P1).unwrap());
+            println!("Game transition is expecting: {:?}", perspective.state());
+        }
+        println!("");
+        println!("");
+        println!("");
+        println!("");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        let maybe_action = match input.trim_right().trim_left() {
+            "quit" => return,
+            s => make_action(&game, s),
+        };
+        if let Some(action) = maybe_action {
+            if let Some(mutations) = game.act(action) {
+                let r0 = game_p0.apply_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P0));
+                let r1 = game_p1.apply_mutations(&mutations_for_player(mutations.clone(), dom_core::Player::P1));
+                if !r0 || !r1 {
+                    panic!("Failed to apply main game mutations");
+                }
+            } else {
+                println!("Game refused action {:?}", action);
+            }
+        } else {
+            println!("Unknown request");
+        }
+    }
 }
